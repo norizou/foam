@@ -10,6 +10,7 @@ import lint from './lint';
 import ai from './ai';
 import smartFolders from './smart-folders';
 import whatsNew from './whats-new';
+import { feature as semanticSearchFeature } from './semantic-search';
 
 export const features: FoamFeature[] = [
   whatsNew,
@@ -23,4 +24,5 @@ export const features: FoamFeature[] = [
   graphWebview,
   lint,
   ai,
+  semanticSearchFeature,
 ];

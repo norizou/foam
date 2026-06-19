@@ -4,7 +4,6 @@
   "description": "Foam",
   "repository": "git@github.com:foambubble/foam.git",
   "license": "MIT",
-  "private": "true",
   "workspaces": [
     "packages/*"
   ],

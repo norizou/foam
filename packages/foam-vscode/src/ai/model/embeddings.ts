@@ -64,6 +64,15 @@ export class FoamEmbeddings implements IDisposable {
   }
 
   /**
+   * Get the embedding for an arbitrary query string using the provider
+   * @param query The query text
+   * @returns The embedding vector
+   */
+  public async getQueryEmbedding(query: string): Promise<number[]> {
+    return this.provider.embed(query);
+  }
+
+  /**
    * Check if embeddings are available
    * @returns true if at least one embedding exists
    */
@@ -110,6 +119,31 @@ export class FoamEmbeddings implements IDisposable {
     }
 
     // Sort by similarity (highest first) and take top K
+    similarities.sort((a, b) => b.similarity - a.similarity);
+    return similarities.slice(0, topK);
+  }
+
+  /**
+   * Search for resources using an arbitrary query string
+   * @param query The search query
+   * @param topK The number of results to return
+   * @returns Array of similar resources sorted by similarity
+   */
+  public async search(query: string, topK: number = 50): Promise<SimilarResource[]> {
+    const targetEmbedding = await this.getQueryEmbedding(query);
+    const similarities: SimilarResource[] = [];
+
+    for (const [path, embedding] of this.embeddings.entries()) {
+      const similarity = this.cosineSimilarity(
+        targetEmbedding,
+        embedding.vector
+      );
+      similarities.push({
+        uri: URI.file(path),
+        similarity,
+      });
+    }
+
     similarities.sort((a, b) => b.similarity - a.similarity);
     return similarities.slice(0, topK);
   }

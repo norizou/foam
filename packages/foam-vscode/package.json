@@ -449,6 +449,10 @@
         "title": "Foam: Show Graph"
       },
       {
+        "command": "foam-vscode.semantic-search",
+        "title": "Foam: Semantic Search"
+      },
+      {
         "command": "foam-vscode.update-wikilink-definitions",
         "title": "Foam: Update Wikilink Definitions"
       },
@@ -1000,6 +1004,26 @@
           "type": "boolean",
           "default": false,
           "description": "When clicking a node in the graph, open the markdown preview instead of the source editor."
+        },
+        "foam.experimental.ai": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental AI features (Semantic Search)."
+        },
+        "foam.experimental.ai.embedding.url": {
+          "type": "string",
+          "default": "http://localhost:1235/v1/embeddings",
+          "description": "URL for the Embedding API (OpenAI compatible format)."
+        },
+        "foam.experimental.ai.embedding.model": {
+          "type": "string",
+          "default": "gemma-3-300m",
+          "description": "Model name for Embeddings."
+        },
+        "foam.experimental.ai.rerank.url": {
+          "type": "string",
+          "default": "http://localhost:1235/v1/rerank",
+          "description": "URL for the Reranking API."
         }
       }
     },

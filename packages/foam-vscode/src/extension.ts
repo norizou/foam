@@ -14,7 +14,7 @@ import { VsCodeWatcher } from './vscode/services/watcher';
 import { createMarkdownParser } from '@foam/core';
 import VsCodeBasedParserCache from './vscode/services/cache';
 import { createMatcherAndDataStore } from './vscode/services/editor';
-import { OllamaEmbeddingProvider } from './ai/providers/ollama/ollama-provider';
+import { CustEmbeddingProvider } from './ai/providers/cust/cust-provider';
 import { initTelemetry } from './vscode/services/telemetry';
 
 // Injected by esbuild's `define` (and the vitest config), so telemetry can
@@ -89,8 +89,16 @@ export async function activate(context: ExtensionContext) {
     const attachmentProvider = new AttachmentResourceProvider(attachmentExtConfig);
 
     // Initialize embedding provider
-    const aiEnabled = workspace.getConfiguration('foam.experimental').get('ai');
-    const embeddingProvider = aiEnabled ? new OllamaEmbeddingProvider() : undefined;
+    const aiConfig = workspace.getConfiguration('foam.experimental.ai');
+    const aiEnabled = aiConfig.get<boolean>('enabled') ?? workspace.getConfiguration('foam.experimental').get('ai');
+    
+    const embedUrl = aiConfig.get<string>('embedding.url') ?? 'http://localhost:1235/v1/embeddings';
+    const embedModel = aiConfig.get<string>('embedding.model') ?? 'gemma-3-300m';
+
+    const embeddingProvider = aiEnabled ? new CustEmbeddingProvider({
+      url: embedUrl.replace('/v1/embeddings', ''), // remove the path for base url
+      model: embedModel
+    }) : undefined;
 
     const foamPromise = bootstrap(
       workspaceRoots,
