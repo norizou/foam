@@ -10,7 +10,7 @@ import {
   Logger,
 } from '@foam/core';
 import { FoamEmbeddings } from '../../ai/model/embeddings';
-import { InMemoryEmbeddingCache } from '../../ai/model/in-memory-embedding-cache';
+import { FileEmbeddingCache } from '../../ai/model/file-embedding-cache';
 import { EmbeddingProvider } from '../../ai/services/embedding-provider';
 import { NoOpEmbeddingProvider } from '../../ai/services/noop-embedding-provider';
 
@@ -41,11 +41,18 @@ export const bootstrap = async (
   );
 
   embeddingProvider = embeddingProvider ?? new NoOpEmbeddingProvider();
+  
+  const cacheUri = roots.length > 0 ? roots[0].joinPath('.foam', 'embeddings.json') : undefined;
+  const cache = cacheUri ? new FileEmbeddingCache(dataStore, cacheUri) : undefined;
+  if (cache) {
+    await cache.load();
+  }
+
   const embeddings = FoamEmbeddings.fromWorkspace(
     core.workspace,
     embeddingProvider,
     true,
-    new InMemoryEmbeddingCache()
+    cache
   );
 
   if (await embeddingProvider.isAvailable()) {

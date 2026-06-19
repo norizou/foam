@@ -51,7 +51,7 @@ async function buildEmbeddings(
   // Show progress notification
   return await vscode.window.withProgress(
     {
-      location: vscode.ProgressLocation.Window,
+      location: vscode.ProgressLocation.Notification,
       title: 'Analyzing notes',
       cancellable: true,
     },

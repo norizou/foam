@@ -87,7 +87,8 @@ export const feature: FoamFeature = async (context: ExtensionContext, foamPromis
             const quickPickItems = data.results.map(res => {
               const doc = docs[res.index];
               const title = doc.uri.getBasename();
-              const snippet = res.document.substring(0, 100).replace(/\n/g, ' ');
+              const textToPreview = typeof res.document === 'string' ? res.document : doc.content;
+              const snippet = textToPreview.substring(0, 100).replace(/\n/g, ' ');
               return {
                 label: `$(file) ${title}`,
                 description: `$(star) Rerank: ${res.relevance_score.toFixed(3)} | Vector: ${doc.similarity.toFixed(3)}`,

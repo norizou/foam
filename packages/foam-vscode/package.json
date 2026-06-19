@@ -1,6 +1,6 @@
 {
   "name": "foam-vscode",
-  "displayName": "Foam",
+  "displayName": "Foam-cust",
   "description": "VS Code + Markdown + Wikilinks for your note taking and knowledge base",
   "private": true,
   "repository": {
@@ -8,7 +8,7 @@
     "type": "git"
   },
   "homepage": "https://github.com/foambubble/foam",
-  "version": "0.44.1",
+  "version": "0.45.0",
   "license": "MIT",
   "publisher": "foam",
   "engines": {
@@ -681,6 +681,7 @@
       }
     ],
     "configuration": {
+      "type": "object",
       "title": "Foam",
       "properties": {
         "foam.supportedLanguages": {
@@ -923,7 +924,6 @@
           "description": "Whether or not to navigate to the target daily note when a daily note snippet is selected."
         },
         "foam.preview.embedNoteType": {
-          "when": "config.foam.experimental.ai",
           "type": "string",
           "default": "full-card",
           "enum": [
