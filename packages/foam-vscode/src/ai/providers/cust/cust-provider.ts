@@ -12,7 +12,7 @@ export interface CustConfig {
 
 export const DEFAULT_CUST_CONFIG: CustConfig = {
   url: 'http://localhost:1235',
-  model: 'gemma-3-300m', // or whatever default
+  model: 'bge-m3',
   timeout: 30000,
 };
 
@@ -100,7 +100,7 @@ export class CustEmbeddingProvider implements EmbeddingProvider {
       type: 'local',
       model: {
         name: this.config.model,
-        dimensions: 1024, // gemma-3-300m dimensions or bge-m3 (1024)
+        dimensions: 1024,
       },
       description: 'Local embedding provider using Cust MLX server',
       endpoint: this.config.url,

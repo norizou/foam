@@ -1,5 +1,5 @@
 {
-  "name": "foam-vscode",
+  "name": "foam-cust",
   "displayName": "Foam-cust",
   "description": "VS Code + Markdown + Wikilinks for your note taking and knowledge base",
   "private": true,
@@ -8,9 +8,9 @@
     "type": "git"
   },
   "homepage": "https://github.com/foambubble/foam",
-  "version": "0.45.0",
+  "version": "0.44.1-2c81f490",
   "license": "MIT",
-  "publisher": "foam",
+  "publisher": "foam-cust",
   "engines": {
     "vscode": "^1.110.0"
   },
@@ -60,37 +60,37 @@
           "id": "foam-vscode.connections",
           "name": "Connections",
           "icon": "$(references)",
-          "contextualTitle": "Foam"
+          "contextualTitle": "Foam-cust"
         },
         {
           "id": "foam-vscode.tags-explorer",
           "name": "Tag Explorer",
           "icon": "$(tag)",
-          "contextualTitle": "Foam"
+          "contextualTitle": "Foam-cust"
         },
         {
           "id": "foam-vscode.notes-explorer",
           "name": "Notes",
           "icon": "$(notebook)",
-          "contextualTitle": "Foam"
+          "contextualTitle": "Foam-cust"
         },
         {
           "id": "foam-vscode.orphans",
           "name": "Orphans",
           "icon": "$(debug-gripper)",
-          "contextualTitle": "Foam"
+          "contextualTitle": "Foam-cust"
         },
         {
           "id": "foam-vscode.placeholders",
           "name": "Placeholders",
           "icon": "$(debug-disconnect)",
-          "contextualTitle": "Foam"
+          "contextualTitle": "Foam-cust"
         },
         {
           "id": "foam-vscode.smart-folders",
           "name": "Smart Folders",
           "icon": "$(folder-library)",
-          "contextualTitle": "Foam",
+          "contextualTitle": "Foam-cust",
           "initialSize": 0
         },
         {
@@ -98,7 +98,7 @@
           "id": "foam-vscode.related-notes",
           "name": "Related Notes (AI)",
           "icon": "$(sparkle)",
-          "contextualTitle": "Foam"
+          "contextualTitle": "Foam-cust"
         }
       ]
     },
@@ -682,7 +682,7 @@
     ],
     "configuration": {
       "type": "object",
-      "title": "Foam",
+      "title": "Foam-cust",
       "properties": {
         "foam.supportedLanguages": {
           "type": "array",
@@ -1017,7 +1017,7 @@
         },
         "foam.experimental.ai.embedding.model": {
           "type": "string",
-          "default": "gemma-3-300m",
+          "default": "bge-m3",
           "description": "Model name for Embeddings."
         },
         "foam.experimental.ai.rerank.url": {
@@ -1114,5 +1114,6 @@
     "publisherDisplayName": "Foam",
     "publisherId": "34339645-24f0-4619-9917-12157fd92446",
     "isPreReleaseVersion": false
-  }
+  },
+  "publisherDisplayName": "Foam-cust"
 }

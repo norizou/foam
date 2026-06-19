@@ -13,7 +13,7 @@ import { URI } from '@foam/core';
 // Helper to create a simple mock provider
 class MockProvider implements EmbeddingProvider {
   async embed(text: string): Promise<number[]> {
-    const vector = new Array(384).fill(0);
+    const vector = Array.from({ length: 384 }).fill(0) as number[];
     vector[0] = text.length / 100; // Deterministic based on text length
     return vector;
   }
@@ -268,6 +268,74 @@ describe('FoamEmbeddings', () => {
       const similar = embeddings.getSimilar(noteUri, 10);
 
       expect(similar.find(s => s.uri.path === noteUri.path)).toBeUndefined();
+
+      workspace.dispose();
+    });
+  });
+
+  describe('search', () => {
+    it('should return empty array when no embeddings exist', async () => {
+      const datastore = new InMemoryDataStore();
+      const workspace = createTestWorkspace(ROOT, datastore);
+      const embeddings = new FoamEmbeddings(workspace, new MockProvider());
+
+      const results = await embeddings.search('query', 5);
+
+      expect(results).toEqual([]);
+      workspace.dispose();
+    });
+
+    it('should return results sorted by similarity to query', async () => {
+      const datastore = new InMemoryDataStore();
+      const workspace = createTestWorkspace(ROOT, datastore);
+      const embeddings = new FoamEmbeddings(workspace, new MockProvider());
+
+      const note1Uri = URI.parse('/note1.md', 'file');
+      const note2Uri = URI.parse('/note2.md', 'file');
+      const note3Uri = URI.parse('/note3.md', 'file');
+
+      // Content lengths: 10, 20, 30 characters
+      datastore.set(note1Uri, '# Note 1\n\nShort text');
+      datastore.set(note2Uri, '# Note 2\n\nMedium length text');
+      datastore.set(note3Uri, '# Note 3\n\nVery long text content here');
+
+      await workspace.fetchAndSet(note1Uri);
+      await workspace.fetchAndSet(note2Uri);
+      await workspace.fetchAndSet(note3Uri);
+
+      await embeddings.updateResource(note1Uri);
+      await embeddings.updateResource(note2Uri);
+      await embeddings.updateResource(note3Uri);
+
+      // Query text length of 20 should match note2 most closely
+      const results = await embeddings.search('Medium length text', 10);
+
+      expect(results.length).toBe(3);
+      expect(results[0].similarity).toBeGreaterThanOrEqual(
+        results[1].similarity
+      );
+      expect(results[1].similarity).toBeGreaterThanOrEqual(
+        results[2].similarity
+      );
+
+      workspace.dispose();
+    });
+
+    it('should respect topK parameter', async () => {
+      const datastore = new InMemoryDataStore();
+      const workspace = createTestWorkspace(ROOT, datastore);
+      const embeddings = new FoamEmbeddings(workspace, new MockProvider());
+
+      for (let i = 0; i < 10; i++) {
+        const noteUri = URI.parse(`/note${i}.md`, 'file');
+        datastore.set(noteUri, `# Note ${i}\n\n${'x'.repeat(i + 1)}`);
+        await workspace.fetchAndSet(noteUri);
+        await embeddings.updateResource(noteUri);
+      }
+
+      const results = await embeddings.search('query', 3);
+
+      expect(results.length).toBe(3);
 
       workspace.dispose();
     });

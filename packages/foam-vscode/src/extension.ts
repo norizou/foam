@@ -93,7 +93,7 @@ export async function activate(context: ExtensionContext) {
     const aiEnabled = aiConfig.get<boolean>('enabled') ?? workspace.getConfiguration('foam.experimental').get('ai');
     
     const embedUrl = aiConfig.get<string>('embedding.url') ?? 'http://localhost:1235/v1/embeddings';
-    const embedModel = aiConfig.get<string>('embedding.model') ?? 'gemma-3-300m';
+    const embedModel = aiConfig.get<string>('embedding.model') ?? 'bge-m3';
 
     const embeddingProvider = aiEnabled ? new CustEmbeddingProvider({
       url: embedUrl.replace('/v1/embeddings', ''), // remove the path for base url
