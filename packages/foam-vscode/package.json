@@ -94,7 +94,7 @@
           "initialSize": 0
         },
         {
-          "when": "config.foam.experimental.ai",
+          "when": "config.foam.experimental.ai.enabled",
           "id": "foam-vscode.related-notes",
           "name": "Related Notes (AI)",
           "icon": "$(sparkle)",
@@ -126,17 +126,17 @@
       {
         "view": "foam-vscode.related-notes",
         "contents": "Open a note to see related notes.",
-        "when": "config.foam.experimental.ai && foam.relatedNotes.state == 'no-note'"
+        "when": "config.foam.experimental.ai.enabled && foam.relatedNotes.state == 'no-note'"
       },
       {
         "view": "foam-vscode.related-notes",
         "contents": "Notes haven't been analyzed yet.\n[Analyze Notes](command:foam-vscode.build-embeddings)\nAnalyze your notes to discover similar content.",
-        "when": "config.foam.experimental.ai && foam.relatedNotes.state == 'no-embedding'"
+        "when": "config.foam.experimental.ai.enabled && foam.relatedNotes.state == 'no-embedding'"
       },
       {
         "view": "foam-vscode.related-notes",
         "contents": "No similar notes found for the current note.",
-        "when": "config.foam.experimental.ai && foam.relatedNotes.state == 'ready'"
+        "when": "config.foam.experimental.ai.enabled && foam.relatedNotes.state == 'ready'"
       }
     ],
     "menus": {
@@ -509,12 +509,12 @@
       {
         "command": "foam-vscode.show-similar-notes",
         "title": "Foam: Show Similar Notes",
-        "when": "config.foam.experimental.ai"
+        "when": "config.foam.experimental.ai.enabled"
       },
       {
         "command": "foam-vscode.build-embeddings",
         "title": "Foam: Build Embeddings Index",
-        "when": "config.foam.experimental.ai"
+        "when": "config.foam.experimental.ai.enabled"
       },
       {
         "command": "foam-vscode.views.orphans.group-by:folder",
@@ -1005,7 +1005,7 @@
           "default": false,
           "description": "When clicking a node in the graph, open the markdown preview instead of the source editor."
         },
-        "foam.experimental.ai": {
+        "foam.experimental.ai.enabled": {
           "type": "boolean",
           "default": false,
           "description": "Enable experimental AI features (Semantic Search)."

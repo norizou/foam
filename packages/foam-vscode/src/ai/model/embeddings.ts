@@ -131,9 +131,17 @@ export class FoamEmbeddings implements IDisposable {
    */
   public async search(query: string, topK: number = 50): Promise<SimilarResource[]> {
     const targetEmbedding = await this.getQueryEmbedding(query);
+    if (targetEmbedding.length === 0) {
+      Logger.debug('Query embedding is empty (AI provider may be disabled or unavailable)');
+      return [];
+    }
     const similarities: SimilarResource[] = [];
 
     for (const [path, embedding] of this.embeddings.entries()) {
+      if (embedding.vector.length !== targetEmbedding.length) {
+        Logger.debug(`Skipping ${path}: dimension mismatch (${embedding.vector.length} vs ${targetEmbedding.length})`);
+        continue;
+      }
       const similarity = this.cosineSimilarity(
         targetEmbedding,
         embedding.vector

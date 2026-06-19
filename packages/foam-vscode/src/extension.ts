@@ -90,10 +90,13 @@ export async function activate(context: ExtensionContext) {
 
     // Initialize embedding provider
     const aiConfig = workspace.getConfiguration('foam.experimental.ai');
-    const aiEnabled = aiConfig.get<boolean>('enabled') ?? workspace.getConfiguration('foam.experimental').get('ai');
+    const aiEnabled = aiConfig.get<boolean>('enabled') ?? false;
     
     const embedUrl = aiConfig.get<string>('embedding.url') ?? 'http://localhost:1235/v1/embeddings';
     const embedModel = aiConfig.get<string>('embedding.model') ?? 'bge-m3';
+    const rerankUrl = aiConfig.get<string>('rerank.url') ?? 'http://localhost:1235/v1/rerank';
+
+    Logger.info(`AI config: enabled=${aiEnabled}, embedUrl=${embedUrl}, model=${embedModel}, rerankUrl=${rerankUrl}`);
 
     const embeddingProvider = aiEnabled ? new CustEmbeddingProvider({
       url: embedUrl.replace('/v1/embeddings', ''), // remove the path for base url

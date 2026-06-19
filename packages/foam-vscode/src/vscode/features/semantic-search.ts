@@ -36,7 +36,17 @@ export const feature: FoamFeature = async (context: ExtensionContext, foamPromis
         },
         async progress => {
           try {
-            // 0. Ensure embeddings are built
+            // 0. Check AI provider availability
+            const aiConfig = vscodeWorkspace.getConfiguration('foam.experimental.ai');
+            const aiEnabled = aiConfig.get<boolean>('enabled') ?? false;
+            if (!aiEnabled) {
+              window.showErrorMessage(
+                'Semantic Search requires AI to be enabled. Set "foam.experimental.ai.enabled": true in your settings.'
+              );
+              return;
+            }
+
+            // Ensure embeddings are built
             if (!foam.embeddings.hasEmbeddings()) {
               progress.report({ message: 'Building embeddings...' });
               const status: 'complete' | 'cancelled' | 'error' =
@@ -77,20 +87,29 @@ export const feature: FoamFeature = async (context: ExtensionContext, foamPromis
             );
 
             // 3. Call Reranker API
-            const aiConfig = vscodeWorkspace.getConfiguration('foam.experimental.ai');
-            const rerankUrl = aiConfig.get<string>('rerank.url') ?? 'http://localhost:1235/v1/rerank';
+            const rerankConfig = vscodeWorkspace.getConfiguration('foam.experimental.ai');
+            const rerankUrl = rerankConfig.get<string>('rerank.url') ?? 'http://localhost:1235/v1/rerank';
 
-            const response = await fetch(rerankUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                query: query,
-                documents: docs.map(d => d.content.substring(0, 2000)),
-                top_k: 20,
-              }),
-            });
+            const rerankController = new AbortController();
+            const rerankTimeout = setTimeout(() => rerankController.abort(), 30000);
+
+            let response: Response;
+            try {
+              response = await fetch(rerankUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  query: query,
+                  documents: docs.map(d => d.content.substring(0, 2000)),
+                  top_k: 20,
+                }),
+                signal: rerankController.signal,
+              });
+            } finally {
+              clearTimeout(rerankTimeout);
+            }
 
             if (!response.ok) {
               const err = await response.text();
