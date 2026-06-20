@@ -50,7 +50,8 @@ export class FoamEmbeddings implements IDisposable {
   constructor(
     private readonly workspace: FoamWorkspace,
     private readonly provider: EmbeddingProvider,
-    private readonly cache?: EmbeddingCache
+    private readonly cache?: EmbeddingCache,
+    private readonly batchSize: number = FoamEmbeddings.DEFAULT_BATCH_SIZE
   ) {}
 
   /**
@@ -255,10 +256,7 @@ export class FoamEmbeddings implements IDisposable {
   }
 
   /** Default batch size for embedding API calls */
-  static readonly BATCH_SIZE = 32;
-
-  /** Number of batches to process concurrently */
-  static readonly CONCURRENCY = 3;
+  static readonly DEFAULT_BATCH_SIZE = 128;
 
   /**
    * Update embeddings for all notes, processing only missing or stale ones.
@@ -333,21 +331,11 @@ export class FoamEmbeddings implements IDisposable {
       }
     }
 
-    // Phase 2: Generate embeddings in parallel batches
-    const batchSize = FoamEmbeddings.BATCH_SIZE;
-    const concurrency = FoamEmbeddings.CONCURRENCY;
+    // Phase 2: Generate embeddings in batches
     const supportsEmbedBatch = typeof this.provider.embedBatch === 'function';
     const alreadyProcessed = skipped + reused;
 
-    // Split pending items into batches
-    const batches: typeof pending[] = [];
-    for (let i = 0; i < pending.length; i += batchSize) {
-      batches.push(pending.slice(i, i + batchSize));
-    }
-
-    // Process batches with concurrency limit
-    let completedItems = 0;
-    for (let waveStart = 0; waveStart < batches.length; waveStart += concurrency) {
+    for (let batchStart = 0; batchStart < pending.length; batchStart += this.batchSize) {
       if (cancellationToken?.isCancellationRequested) {
         Logger.info(
           `Embedding build cancelled during batch processing. Generated ${generated}/${pending.length} embeddings.`
@@ -355,64 +343,54 @@ export class FoamEmbeddings implements IDisposable {
         throw new CancellationError('Embedding build cancelled');
       }
 
-      const wave = batches.slice(waveStart, waveStart + concurrency);
+      const batch = pending.slice(batchStart, batchStart + this.batchSize);
 
-      // Report progress before launching the wave
-      const waveItemCount = wave.reduce((sum, b) => sum + b.length, 0);
+      // Report progress
       onProgress?.({
-        current: alreadyProcessed + completedItems + waveItemCount,
+        current: alreadyProcessed + batchStart + batch.length,
         total: resources.length,
         context: {
-          uri: wave[0][0].uri,
-          title: `Generating ${completedItems + 1}-${completedItems + waveItemCount}/${pending.length}`,
+          uri: batch[0].uri,
+          title: `Generating ${batchStart + 1}-${batchStart + batch.length}/${pending.length}`,
         },
       });
 
-      const results = await Promise.allSettled(
-        wave.map(async batch => {
-          let vectors: number[][];
-          if (supportsEmbedBatch) {
-            vectors = await this.provider.embedBatch!(batch.map(item => item.text));
-          } else {
-            vectors = [];
-            for (const item of batch) {
-              vectors.push(await this.provider.embed(item.text));
-            }
-          }
-          return { batch, vectors };
-        })
-      );
+      try {
+        let vectors: number[][];
 
-      for (const result of results) {
-        if (result.status === 'fulfilled') {
-          const { batch, vectors } = result.value;
-          for (let j = 0; j < batch.length; j++) {
-            const item = batch[j];
-            const vector = vectors[j];
-
-            this.embeddings.set(item.uri.path, {
-              vector,
-              createdAt: Date.now(),
-            });
-
-            if (this.cache) {
-              this.cache.set(item.uri, {
-                checksum: item.checksum,
-                embedding: vector,
-              });
-            }
-
-            generated++;
-          }
+        if (supportsEmbedBatch) {
+          vectors = await this.provider.embedBatch!(batch.map(item => item.text));
         } else {
-          Logger.error(
-            `Failed to generate embeddings for a batch`,
-            result.reason
-          );
+          vectors = [];
+          for (const item of batch) {
+            vectors.push(await this.provider.embed(item.text));
+          }
         }
-      }
 
-      completedItems += waveItemCount;
+        for (let j = 0; j < batch.length; j++) {
+          const item = batch[j];
+          const vector = vectors[j];
+
+          this.embeddings.set(item.uri.path, {
+            vector,
+            createdAt: Date.now(),
+          });
+
+          if (this.cache) {
+            this.cache.set(item.uri, {
+              checksum: item.checksum,
+              embedding: vector,
+            });
+          }
+
+          generated++;
+        }
+      } catch (error) {
+        Logger.error(
+          `Failed to generate embeddings for batch starting at index ${batchStart}`,
+          error
+        );
+      }
     }
 
     // Flush cache to disk once after all batches complete
@@ -461,9 +439,10 @@ export class FoamEmbeddings implements IDisposable {
     workspace: FoamWorkspace,
     provider: EmbeddingProvider,
     keepMonitoring: boolean = false,
-    cache?: EmbeddingCache
+    cache?: EmbeddingCache,
+    batchSize?: number
   ): FoamEmbeddings {
-    const embeddings = new FoamEmbeddings(workspace, provider, cache);
+    const embeddings = new FoamEmbeddings(workspace, provider, cache, batchSize);
 
     if (keepMonitoring) {
       // Update embeddings when resources change

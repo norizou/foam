@@ -28,7 +28,8 @@ export const bootstrap = async (
   parser: ResourceParser,
   initialProviders: ResourceProvider[],
   defaultExtension: string = '.md',
-  embeddingProvider?: EmbeddingProvider
+  embeddingProvider?: EmbeddingProvider,
+  embeddingBatchSize?: number
 ): Promise<Foam> => {
   const core = await coreBootstrap(
     roots,
@@ -52,7 +53,8 @@ export const bootstrap = async (
     core.workspace,
     embeddingProvider,
     true,
-    cache
+    cache,
+    embeddingBatchSize
   );
 
   if (await embeddingProvider.isAvailable()) {

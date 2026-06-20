@@ -1060,6 +1060,13 @@
           "default": "http://localhost:1235/v1/rerank",
           "description": "URL for the Reranking API."
         },
+        "foam.experimental.ai.embedding.batchSize": {
+          "type": "number",
+          "default": 128,
+          "minimum": 1,
+          "maximum": 512,
+          "description": "Number of texts to send per embedding API call. Larger values reduce API calls but use more server memory."
+        },
         "foam.experimental.ai.embedding.Top-K": {
           "type": "number",
           "default": 30,

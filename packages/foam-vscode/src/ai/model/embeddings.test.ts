@@ -402,14 +402,15 @@ describe('FoamEmbeddings', () => {
       workspace.dispose();
     });
 
-    it('should batch items up to BATCH_SIZE', async () => {
+    it('should batch items up to configured batchSize', async () => {
       const datastore = new InMemoryDataStore();
       const workspace = createTestWorkspace(ROOT, datastore);
       const provider = new BatchMockProvider();
-      const embeddings = new FoamEmbeddings(workspace, provider);
+      const customBatchSize = 10;
+      const embeddings = new FoamEmbeddings(workspace, provider, undefined, customBatchSize);
 
-      // Create more notes than BATCH_SIZE to verify batching
-      const noteCount = FoamEmbeddings.BATCH_SIZE + 5;
+      // Create more notes than batchSize to verify batching
+      const noteCount = customBatchSize + 5;
       for (let i = 0; i < noteCount; i++) {
         const noteUri = URI.parse(`/note${i}.md`, 'file');
         datastore.set(noteUri, `# Note ${i}\n\nContent ${i}`);
@@ -419,48 +420,8 @@ describe('FoamEmbeddings', () => {
       await embeddings.update();
 
       expect(embeddings.size()).toBe(noteCount);
-      // Should have needed 2 batch calls (BATCH_SIZE + 5 remaining)
+      // Should have needed 2 batch calls (10 + 5 remaining)
       expect(provider.embedBatchCallCount).toBe(2);
-
-      workspace.dispose();
-    });
-
-    it('should process multiple batches concurrently', async () => {
-      const datastore = new InMemoryDataStore();
-      const workspace = createTestWorkspace(ROOT, datastore);
-
-      // Track concurrent calls to verify parallelism
-      let maxConcurrent = 0;
-      let currentConcurrent = 0;
-
-      const provider = new BatchMockProvider();
-      const originalEmbedBatch = provider.embedBatch.bind(provider);
-      provider.embedBatch = async (texts: string[]) => {
-        currentConcurrent++;
-        maxConcurrent = Math.max(maxConcurrent, currentConcurrent);
-        // Small delay to allow concurrency to be observable
-        await new Promise(resolve => setTimeout(resolve, 10));
-        const result = await originalEmbedBatch(texts);
-        currentConcurrent--;
-        return result;
-      };
-
-      const embeddings = new FoamEmbeddings(workspace, provider);
-
-      // Create enough notes for multiple batches (BATCH_SIZE * CONCURRENCY + extra)
-      const noteCount = FoamEmbeddings.BATCH_SIZE * FoamEmbeddings.CONCURRENCY + 1;
-      for (let i = 0; i < noteCount; i++) {
-        const noteUri = URI.parse(`/note${i}.md`, 'file');
-        datastore.set(noteUri, `# Note ${i}\n\nContent ${i}`);
-        await workspace.fetchAndSet(noteUri);
-      }
-
-      await embeddings.update();
-
-      expect(embeddings.size()).toBe(noteCount);
-      // Should have observed concurrent batch calls
-      expect(maxConcurrent).toBeGreaterThan(1);
-      expect(maxConcurrent).toBeLessThanOrEqual(FoamEmbeddings.CONCURRENCY);
 
       workspace.dispose();
     });
