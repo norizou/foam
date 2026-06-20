@@ -1,16 +1,17 @@
-# Foam + Cust Embedding/Reranker 統合設計書
+# Foam + Cust Embedding/Reranker Integration Design
 
-本ドキュメントは、VSCode拡張機能「Foam」の内部実装を拡張し、ローカルで稼働している `embed_reranker` APIサーバー（Cust Embedding / Reranker）を用いたセマンティック検索機能を実装するための設計をまとめたものです。
+[日本語版](Foam_Cust_Integration_Design_JA.md) | English
 
-## 1. 背景と目的
-Foamは試験的にAI機能（Ollamaを利用したローカルの埋め込み）をサポートし始めましたが、コサイン類似度のみの単純な検索であり、精度に限界があります。
-そこで、専用APIサーバーへ接続し、**「初期検索（ベクトル検索）＋再ランキング（Cross-Encoder）」の2段構えの高精度なセマンティック検索機能**をFoam内に構築します。
+This document outlines the design for extending the VSCode extension "Foam" to implement high-precision semantic search using a locally running `embed_reranker` API server (Cust Embedding / Reranker).
 
-## 2. アーキテクチャ
+## 1. Background and Purpose
+Foam has started experimentally supporting AI features (local embeddings using Ollama), but this only provides simple cosine similarity search with limited accuracy. Therefore, we will build a high-precision semantic search feature within Foam that connects to a dedicated API server and uses a **"two-stage approach: initial search (vector search) + reranking (Cross-Encoder)"**.
+
+## 2. Architecture
 
 ```mermaid
 graph TD
-    User["ユーザー"] -->|"検索クエリ入力"| Cmd["VSCode Command: Foam Semantic Search"]
+    User["User"] -->|"Search query input"| Cmd["VSCode Command: Foam Semantic Search"]
     Cmd -->|"1. embed query"| Cust["Cust API Server<br/>http://localhost:1235"]
     Cust -.->|"vector"| Cmd
     Cmd -->|"2. cosine similarity"| Cache[("FoamEmbeddings<br/>In-Memory Cache")]
@@ -20,46 +21,46 @@ graph TD
     Cmd -->|"4. display QuickPick"| User
 ```
 
-## 3. 実装モジュール
+## 3. Implementation Modules
 
 ### ① `CustEmbeddingProvider`
-- **役割**: Foam内の `EmbeddingProvider` インターフェースを実装するクラス。
-- **実装場所**: `packages/foam-vscode/src/ai/providers/cust/cust-provider.ts`
-- **処理内容**:
-  - `embed(text)`: サーバーの `/v1/embeddings` エンドポイントを叩き、テキストのベクトル表現を取得します。
-  - バックグラウンドでFoamが各Markdownファイルの内容を自動的にこのProviderに渡し、ベクトル化してキャッシュします。
+- **Role**: Class implementing Foam's `EmbeddingProvider` interface.
+- **Location**: `packages/foam-vscode/src/ai/providers/cust/cust-provider.ts`
+- **Processing**:
+  - `embed(text)`: Calls the server's `/v1/embeddings` endpoint to get the vector representation of text.
+  - Foam automatically passes each Markdown file's content to this Provider in the background, vectorizes it, and caches it.
 
-### ② `FoamEmbeddings` の拡張
-- **役割**: 検索クエリ用のベクトルを取得するヘルパーを追加。
-- **実装場所**: `packages/foam-vscode/src/ai/model/embeddings.ts`
-- **処理内容**:
-  - `getQueryEmbedding(query)`: ユーザーの入力クエリのベクトル表現を取得するメソッドを追加します。
-  - `search(query)`: ユーザーの入力クエリのベクトルを用いて、類似度順のノート一覧を取得するメソッドを追加します。
+### ② Extension of `FoamEmbeddings`
+- **Role**: Add helper for obtaining search query vectors.
+- **Location**: `packages/foam-vscode/src/ai/model/embeddings.ts`
+- **Processing**:
+  - `getQueryEmbedding(query)`: Add method to get the vector representation of the user's input query.
+  - `search(query)`: Add method to get a list of notes ordered by similarity using the vector of the user's input query.
 
-### ③ セマンティック検索コマンド機能 (`semantic-search.ts`)
-- **役割**: VSCode上の検索UIと、検索パイプライン全体の制御。
-- **実装場所**: `packages/foam-vscode/src/vscode/features/semantic-search.ts`
-- **処理フロー**:
-  1. ユーザーから検索ボックス(`window.showInputBox`)でクエリを受け取る。
-  2. `FoamEmbeddings` を通じてクエリをベクトル化。
-  3. ワークスペース内の全ノートから類似度上位K件を抽出（粗いフィルタリング）。KはVSCode設定で変更可能（デフォルト: 30）。
-  4. 抽出した上位K件のノート本文を取得し、Cust API の `/v1/rerank` エンドポイントにクエリと共に送信。
-  5. サーバーから返却された精緻なスコア順に並び替える。
-  6. VSCodeの `QuickPick` インターフェースに検索結果として表示。選択すると該当ファイルを開く。
+### ③ Semantic Search Command Feature (`semantic-search.ts`)
+- **Role**: VSCode search UI and control of the entire search pipeline.
+- **Location**: `packages/foam-vscode/src/vscode/features/semantic-search.ts`
+- **Processing Flow**:
+  1. Receive query from user via search box (`window.showInputBox`).
+  2. Vectorize the query through `FoamEmbeddings`.
+  3. Extract top K notes by similarity from all notes in the workspace (coarse filtering). K is configurable via VSCode settings (default: 30).
+  4. Retrieve the content of the top K notes and send them along with the query to the Cust API's `/v1/rerank` endpoint.
+  5. Reorder based on the refined scores returned from the server.
+  6. Display search results in VSCode's `QuickPick` interface. Selecting opens the corresponding file.
 
-## 4. 設定項目
+## 4. Configuration
 
-VSCodeの設定（`settings.json`）から以下のパラメータを調整できます：
+The following parameters can be adjusted via VSCode settings (`settings.json`):
 
-| 設定キー | 説明 | デフォルト値 |
-|---------|------|------------|
-| `foam.semanticSearch.topK` | ベクトル検索で抽出する候補数（Rerankerに入力する件数） | 30 |
+| Setting Key | Description | Default Value |
+|-------------|-------------|---------------|
+| `foam.semanticSearch.topK` | Number of candidates to extract in vector search (number of inputs to Reranker) | 30 |
 
-この設定により、検索精度とパフォーマンスのバランスを調整できます：
-- **値を大きくする**: より多くの候補からRerankerが選択するため、精度が向上する可能性がありますが、処理時間が増加します
-- **値を小さくする**: 処理速度が向上しますが、関連するノートが候補に含まれなくなる可能性があります
+This setting allows you to adjust the balance between search accuracy and performance:
+- **Increase value**: Reranker selects from more candidates, potentially improving accuracy but increasing processing time
+- **Decrease value**: Processing speed improves, but relevant notes may not be included in candidates
 
-## 5. 期待される効果
-* **高精度なセマンティック検索**: 単純なキーワード検索（grep）や通常のベクトル検索ではヒットしにくい、文脈や意味に基づいた検索が可能になります。
-* **高速なレスポンス**: Rerankerは計算負荷が高いですが、事前にFoam内で維持されているベクトルキャッシュを用いて数十件に絞り込むため、全体の検索は非常に高速（数秒以内）に完了します。
-* **柔軟なカスタマイズ**: VSCodeの設定から、URL、モデル名、候補数（Top-K）などを自由に変更できます。
+## 5. Expected Effects
+* **High-precision semantic search**: Enables context and meaning-based search that is difficult to achieve with simple keyword search (grep) or regular vector search.
+* **Fast response**: Although Reranker is computationally expensive, the overall search completes very quickly (within seconds) by filtering to dozens of items using the vector cache maintained in Foam.
+* **Flexible customization**: URL, model name, candidate count (Top-K), etc. can be freely changed via VSCode settings.
