@@ -20,3 +20,4 @@ vsc-extension-quickstart.md
 **/*.ts
 assets/screenshots
 node_modules
+../**

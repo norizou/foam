@@ -75,6 +75,24 @@ describe('semantic-search', () => {
     );
     const showErrorMessageSpy = vi.spyOn(vscode.window, 'showErrorMessage');
 
+    vi.spyOn(vscode.workspace, 'getConfiguration').mockReturnValue({
+      get: (section: string) => {
+        if (section === 'enabled') {
+          return true;
+        }
+        if (section === 'embedding.Top-K') {
+          return 30;
+        }
+        if (section === 'rerank.url') {
+          return 'http://localhost:1235/v1/rerank';
+        }
+        if (section === 'rerank.Top-K') {
+          return 20;
+        }
+        return undefined;
+      },
+    } as any);
+
     const context = mockContext();
     await feature(context, Promise.resolve(foam));
     await vscode.commands.executeCommand('foam-vscode.semantic-search');
@@ -126,6 +144,24 @@ describe('semantic-search', () => {
       }),
     });
 
+    vi.spyOn(vscode.workspace, 'getConfiguration').mockReturnValue({
+      get: (section: string) => {
+        if (section === 'enabled') {
+          return true;
+        }
+        if (section === 'embedding.Top-K') {
+          return 30;
+        }
+        if (section === 'rerank.url') {
+          return 'http://localhost:1235/v1/rerank';
+        }
+        if (section === 'rerank.Top-K') {
+          return 20;
+        }
+        return undefined;
+      },
+    } as any);
+
     const showInputBoxSpy = vi
       .spyOn(vscode.window, 'showInputBox')
       .mockResolvedValue('test query');
@@ -147,6 +183,24 @@ describe('semantic-search', () => {
   it('should show information message when no vector matches are found', async () => {
     const foam = mockFoam();
     foam.embeddings.search.mockResolvedValue([]);
+
+    vi.spyOn(vscode.workspace, 'getConfiguration').mockReturnValue({
+      get: (section: string) => {
+        if (section === 'enabled') {
+          return true;
+        }
+        if (section === 'embedding.Top-K') {
+          return 30;
+        }
+        if (section === 'rerank.url') {
+          return 'http://localhost:1235/v1/rerank';
+        }
+        if (section === 'rerank.Top-K') {
+          return 20;
+        }
+        return undefined;
+      },
+    } as any);
 
     const showInputBoxSpy = vi
       .spyOn(vscode.window, 'showInputBox')
@@ -186,6 +240,24 @@ describe('semantic-search', () => {
       }),
     });
 
+    vi.spyOn(vscode.workspace, 'getConfiguration').mockReturnValue({
+      get: (section: string) => {
+        if (section === 'enabled') {
+          return true;
+        }
+        if (section === 'embedding.Top-K') {
+          return 30;
+        }
+        if (section === 'rerank.url') {
+          return 'http://localhost:1235/v1/rerank';
+        }
+        if (section === 'rerank.Top-K') {
+          return 20;
+        }
+        return undefined;
+      },
+    } as any);
+
     const showInputBoxSpy = vi
       .spyOn(vscode.window, 'showInputBox')
       .mockResolvedValue('query with empty rerank');
@@ -224,6 +296,24 @@ describe('semantic-search', () => {
       status: 500,
       text: async () => 'Internal server error',
     });
+
+    vi.spyOn(vscode.workspace, 'getConfiguration').mockReturnValue({
+      get: (section: string) => {
+        if (section === 'enabled') {
+          return true;
+        }
+        if (section === 'embedding.Top-K') {
+          return 30;
+        }
+        if (section === 'rerank.url') {
+          return 'http://localhost:1235/v1/rerank';
+        }
+        if (section === 'rerank.Top-K') {
+          return 20;
+        }
+        return undefined;
+      },
+    } as any);
 
     const showInputBoxSpy = vi
       .spyOn(vscode.window, 'showInputBox')
@@ -268,8 +358,17 @@ describe('semantic-search', () => {
     const customUrl = 'http://custom:9999/v1/rerank';
     vi.spyOn(vscode.workspace, 'getConfiguration').mockReturnValue({
       get: (section: string) => {
+        if (section === 'enabled') {
+          return true;
+        }
+        if (section === 'embedding.Top-K') {
+          return 30;
+        }
         if (section === 'rerank.url') {
           return customUrl;
+        }
+        if (section === 'rerank.Top-K') {
+          return 20;
         }
         return undefined;
       },
@@ -291,6 +390,65 @@ describe('semantic-search', () => {
       customUrl,
       expect.objectContaining({
         method: 'POST',
+      })
+    );
+
+    showInputBoxSpy.mockRestore();
+    showQuickPickSpy.mockRestore();
+    showErrorMessageSpy.mockRestore();
+  });
+
+  it('should use custom topK values from configuration', async () => {
+    const foam = mockFoam();
+    foam.embeddings.search.mockResolvedValue([
+      { uri: URI.parse('/note1.md', 'file'), similarity: 0.8 },
+    ]);
+
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        model: 'qwen3-0.6b',
+        results: [{ index: 0, relevance_score: 0.9 }],
+      }),
+    });
+
+    vi.spyOn(vscode.workspace, 'getConfiguration').mockReturnValue({
+      get: (section: string) => {
+        if (section === 'enabled') {
+          return true;
+        }
+        if (section === 'embedding.Top-K') {
+          return 50;
+        }
+        if (section === 'rerank.url') {
+          return 'http://localhost:1235/v1/rerank';
+        }
+        if (section === 'rerank.Top-K') {
+          return 10;
+        }
+        return undefined;
+      },
+    } as any);
+
+    const showInputBoxSpy = vi
+      .spyOn(vscode.window, 'showInputBox')
+      .mockResolvedValue('custom topk query');
+    const showQuickPickSpy = vi
+      .spyOn(vscode.window, 'showQuickPick')
+      .mockResolvedValue(undefined);
+    const showErrorMessageSpy = vi.spyOn(vscode.window, 'showErrorMessage');
+
+    const context = mockContext();
+    await feature(context, Promise.resolve(foam));
+    await vscode.commands.executeCommand('foam-vscode.semantic-search');
+
+    expect(foam.embeddings.search).toHaveBeenCalledWith('custom topk query', 50);
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:1235/v1/rerank',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: expect.stringContaining('"top_k":10'),
       })
     );
 

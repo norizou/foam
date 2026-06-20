@@ -65,7 +65,8 @@ export const feature: FoamFeature = async (context: ExtensionContext, foamPromis
 
             // 1. Initial Vector Search
             progress.report({ message: 'Embedding query and searching...' });
-            const similar = await foam.embeddings.search(query, 30);
+            const embedTopK = aiConfig.get<number>('embedding.Top-K') ?? 30;
+            const similar = await foam.embeddings.search(query, embedTopK);
             Logger.info(`Semantic search: vector search returned ${similar.length} candidates`);
 
             if (similar.length === 0) {
@@ -89,6 +90,7 @@ export const feature: FoamFeature = async (context: ExtensionContext, foamPromis
             // 3. Call Reranker API
             const rerankConfig = vscodeWorkspace.getConfiguration('foam.experimental.ai');
             const rerankUrl = rerankConfig.get<string>('rerank.url') ?? 'http://localhost:1235/v1/rerank';
+            const rerankTopK = rerankConfig.get<number>('rerank.Top-K') ?? 20;
 
             const rerankController = new AbortController();
             const rerankTimeout = setTimeout(() => rerankController.abort(), 30000);
@@ -103,7 +105,7 @@ export const feature: FoamFeature = async (context: ExtensionContext, foamPromis
                 body: JSON.stringify({
                   query: query,
                   documents: docs.map(d => d.content.substring(0, 2000)),
-                  top_k: 20,
+                  top_k: rerankTopK,
                 }),
                 signal: rerankController.signal,
               });
