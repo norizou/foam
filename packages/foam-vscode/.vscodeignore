@@ -20,4 +20,15 @@ vsc-extension-quickstart.md
 **/*.ts
 assets/screenshots
 node_modules
-../**
+../foam-cli
+../foam-core
+../foam-graph
+../foam-mcp
+../.git
+../.vscode
+../.agents
+../docs
+../scripts
+../lerna.json
+../yarn.lock
+../package.json
