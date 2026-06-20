@@ -39,9 +39,21 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
    * Generate an embedding for the given text
    */
   async embed(text: string): Promise<number[]> {
+    const results = await this.embedBatch([text]);
+    return results[0];
+  }
+
+  /**
+   * Generate embeddings for multiple texts in a single API call
+   */
+  async embedBatch(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) {
+      return [];
+    }
+
     // normalize text to suitable input (format and size)
     // TODO we should better handle long texts by chunking them and averaging embeddings
-    const input = text.substring(0, 6000).normalize();
+    const inputs = texts.map(t => t.substring(0, 6000).normalize());
 
     try {
       const controller = new AbortController();
@@ -57,7 +69,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
         },
         body: JSON.stringify({
           model: this.config.model,
-          input: [input],
+          input: inputs,
         }),
         signal: controller.signal,
       });
@@ -70,12 +82,12 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
       }
 
       const data = await response.json();
-      if (data.embeddings == null) {
+      if (data.embeddings == null || data.embeddings.length !== inputs.length) {
         throw new Error(
           `Invalid response from AI service: ${JSON.stringify(data)}`
         );
       }
-      return data.embeddings[0];
+      return data.embeddings;
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'AbortError') {

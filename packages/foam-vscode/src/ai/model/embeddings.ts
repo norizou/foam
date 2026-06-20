@@ -254,8 +254,12 @@ export class FoamEmbeddings implements IDisposable {
     }
   }
 
+  /** Default batch size for embedding API calls */
+  static readonly BATCH_SIZE = 32;
+
   /**
-   * Update embeddings for all notes, processing only missing or stale ones
+   * Update embeddings for all notes, processing only missing or stale ones.
+   * Uses batch API calls when the provider supports embedBatch().
    * @param onProgress Optional callback to report progress
    * @param cancellationToken Optional token to cancel the operation
    * @returns Promise that resolves when all embeddings are updated
@@ -279,9 +283,10 @@ export class FoamEmbeddings implements IDisposable {
     let generated = 0;
     let reused = 0;
 
-    // Process embeddings sequentially to avoid overwhelming the service
+    // Phase 1: Read all content, check cache, and collect items needing new embeddings
+    const pending: { index: number; text: string; checksum: string; uri: URI }[] = [];
+
     for (let i = 0; i < resources.length; i++) {
-      // Check for cancellation
       if (cancellationToken?.isCancellationRequested) {
         Logger.info(
           `Embedding build cancelled. Processed ${i}/${resources.length} notes.`
@@ -309,10 +314,8 @@ export class FoamEmbeddings implements IDisposable {
         if (this.cache && this.cache.has(resource.uri)) {
           const cached = this.cache.get(resource.uri);
           if (cached.checksum === textChecksum) {
-            // Check if we already have this embedding in memory
             const existing = this.embeddings.get(resource.uri.path);
             if (existing) {
-              // Already have current embedding, skip
               reused++;
               continue;
             }
@@ -327,28 +330,70 @@ export class FoamEmbeddings implements IDisposable {
           }
         }
 
-        // Generate new embedding
-        const vector = await this.provider.embed(text);
-        this.embeddings.set(resource.uri.path, {
-          vector,
-          createdAt: Date.now(),
-        });
-
-        // Update cache
-        if (this.cache) {
-          this.cache.set(resource.uri, {
-            checksum: textChecksum,
-            embedding: vector,
-          });
-        }
-
-        generated++;
+        pending.push({ index: i, text, checksum: textChecksum, uri: resource.uri });
       } catch (error) {
         Logger.error(
-          `Failed to generate embedding for ${resource.uri.toFsPath()}`,
+          `Failed to read content for ${resource.uri.toFsPath()}`,
           error
         );
       }
+    }
+
+    // Phase 2: Generate embeddings in batches
+    const batchSize = FoamEmbeddings.BATCH_SIZE;
+    const supportsEmbedBatch = typeof this.provider.embedBatch === 'function';
+
+    for (let batchStart = 0; batchStart < pending.length; batchStart += batchSize) {
+      if (cancellationToken?.isCancellationRequested) {
+        Logger.info(
+          `Embedding build cancelled during batch processing. Generated ${generated}/${pending.length} embeddings.`
+        );
+        throw new CancellationError('Embedding build cancelled');
+      }
+
+      const batch = pending.slice(batchStart, batchStart + batchSize);
+
+      try {
+        let vectors: number[][];
+
+        if (supportsEmbedBatch) {
+          vectors = await this.provider.embedBatch!(batch.map(item => item.text));
+        } else {
+          vectors = [];
+          for (const item of batch) {
+            vectors.push(await this.provider.embed(item.text));
+          }
+        }
+
+        for (let j = 0; j < batch.length; j++) {
+          const item = batch[j];
+          const vector = vectors[j];
+
+          this.embeddings.set(item.uri.path, {
+            vector,
+            createdAt: Date.now(),
+          });
+
+          if (this.cache) {
+            this.cache.set(item.uri, {
+              checksum: item.checksum,
+              embedding: vector,
+            });
+          }
+
+          generated++;
+        }
+      } catch (error) {
+        Logger.error(
+          `Failed to generate embeddings for batch starting at index ${batchStart}`,
+          error
+        );
+      }
+    }
+
+    // Flush cache to disk once after all batches complete
+    if (this.cache?.flush && generated > 0) {
+      await this.cache.flush();
     }
 
     const end = Date.now();

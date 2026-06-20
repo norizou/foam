@@ -38,6 +38,15 @@ export interface EmbeddingProvider {
   embed(text: string): Promise<number[]>;
 
   /**
+   * Generate embedding vectors for multiple texts in a single API call.
+   * Providers that support batch embedding should implement this for efficiency.
+   * If not implemented, falls back to sequential embed() calls.
+   * @param texts The texts to embed
+   * @returns A promise that resolves to an array of embedding vectors (same order as input)
+   */
+  embedBatch?(texts: string[]): Promise<number[][]>;
+
+  /**
    * Check if the embedding service is available and ready to use
    * @returns A promise that resolves to true if available, false otherwise
    */

@@ -89,4 +89,12 @@ export class FileEmbeddingCache implements EmbeddingCache {
     this.cache.clear();
     this.scheduleSave();
   }
+
+  async flush(): Promise<void> {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    await this.save();
+  }
 }

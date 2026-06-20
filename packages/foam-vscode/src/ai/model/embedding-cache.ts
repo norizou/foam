@@ -14,4 +14,10 @@ export interface EmbeddingCacheEntry {
 /**
  * Cache for embeddings, keyed by URI
  */
-export type EmbeddingCache = ICache<URI, EmbeddingCacheEntry>;
+export interface EmbeddingCache extends ICache<URI, EmbeddingCacheEntry> {
+  /**
+   * Immediately persist any pending changes.
+   * No-op for in-memory caches.
+   */
+  flush?(): Promise<void>;
+}

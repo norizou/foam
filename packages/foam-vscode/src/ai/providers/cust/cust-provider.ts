@@ -24,7 +24,16 @@ export class CustEmbeddingProvider implements EmbeddingProvider {
   }
 
   async embed(text: string): Promise<number[]> {
-    const input = text.substring(0, 8000).normalize();
+    const results = await this.embedBatch([text]);
+    return results[0];
+  }
+
+  async embedBatch(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) {
+      return [];
+    }
+
+    const inputs = texts.map(t => t.substring(0, 8000).normalize());
 
     try {
       const controller = new AbortController();
@@ -40,7 +49,7 @@ export class CustEmbeddingProvider implements EmbeddingProvider {
         },
         body: JSON.stringify({
           model: this.config.model,
-          input: [input],
+          input: inputs,
         }),
         signal: controller.signal,
       });
@@ -53,12 +62,22 @@ export class CustEmbeddingProvider implements EmbeddingProvider {
       }
 
       const data = await response.json();
-      if (data.data == null || data.data.length === 0 || data.data[0].embedding == null) {
+      if (data.data == null || data.data.length === 0) {
         throw new Error(
           `Invalid response from Cust AI service: ${JSON.stringify(data)}`
         );
       }
-      return data.data[0].embedding;
+
+      // Sort by index to ensure correct order (API may return in any order)
+      const sorted = [...data.data].sort((a: any, b: any) => a.index - b.index);
+      return sorted.map((item: any) => {
+        if (item.embedding == null) {
+          throw new Error(
+            `Invalid embedding in response from Cust AI service: ${JSON.stringify(item)}`
+          );
+        }
+        return item.embedding;
+      });
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'AbortError') {

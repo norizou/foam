@@ -74,7 +74,7 @@ describe('CustEmbeddingProvider', () => {
       const mockEmbedding = Array.from({ length: 1024 }).fill(0.1) as number[];
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ data: [{ embedding: mockEmbedding }] }),
+        json: async () => ({ data: [{ index: 0, embedding: mockEmbedding }] }),
       });
 
       const provider = new CustEmbeddingProvider();
@@ -98,7 +98,7 @@ describe('CustEmbeddingProvider', () => {
       const mockEmbedding = Array.from({ length: 1024 }).fill(0.1) as number[];
       (global.fetch as any).mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ data: [{ embedding: mockEmbedding }] }),
+        json: async () => ({ data: [{ index: 0, embedding: mockEmbedding }] }),
       });
 
       const provider = new CustEmbeddingProvider();
@@ -167,6 +167,64 @@ describe('CustEmbeddingProvider', () => {
       await expect(embedPromise).rejects.toThrow(
         'Cust AI service took too long to respond'
       );
+    });
+  });
+
+  describe('embedBatch', () => {
+    it('should return empty array for empty input', async () => {
+      const provider = new CustEmbeddingProvider();
+      const results = await provider.embedBatch([]);
+
+      expect(results).toEqual([]);
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('should send multiple texts in a single API call', async () => {
+      const emb1 = Array.from({ length: 1024 }, (_, i) => i * 0.001);
+      const emb2 = Array.from({ length: 1024 }, (_, i) => i * 0.002);
+      const emb3 = Array.from({ length: 1024 }, (_, i) => i * 0.003);
+
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [
+            { index: 0, embedding: emb1 },
+            { index: 1, embedding: emb2 },
+            { index: 2, embedding: emb3 },
+          ],
+        }),
+      });
+
+      const provider = new CustEmbeddingProvider();
+      const results = await provider.embedBatch(['text1', 'text2', 'text3']);
+
+      expect(results).toEqual([emb1, emb2, emb3]);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+
+      const callArgs = (global.fetch as any).mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      expect(body.input).toEqual(['text1', 'text2', 'text3']);
+    });
+
+    it('should sort results by index when API returns out of order', async () => {
+      const emb0 = Array.from({ length: 1024 }, () => 0.1);
+      const emb1 = Array.from({ length: 1024 }, () => 0.2);
+
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: [
+            { index: 1, embedding: emb1 },
+            { index: 0, embedding: emb0 },
+          ],
+        }),
+      });
+
+      const provider = new CustEmbeddingProvider();
+      const results = await provider.embedBatch(['first', 'second']);
+
+      expect(results[0]).toEqual(emb0);
+      expect(results[1]).toEqual(emb1);
     });
   });
 

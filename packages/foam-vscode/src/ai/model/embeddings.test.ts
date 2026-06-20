@@ -9,10 +9,14 @@ import {
   waitForExpect,
 } from '../../test/test-utils';
 import { URI } from '@foam/core';
+import { InMemoryEmbeddingCache } from './in-memory-embedding-cache';
 
 // Helper to create a simple mock provider
 class MockProvider implements EmbeddingProvider {
+  embedCallCount = 0;
+
   async embed(text: string): Promise<number[]> {
+    this.embedCallCount++;
     const vector = Array.from({ length: 384 }).fill(0) as number[];
     vector[0] = text.length / 100; // Deterministic based on text length
     return vector;
@@ -26,6 +30,20 @@ class MockProvider implements EmbeddingProvider {
       type: 'local',
       model: { name: 'test-model', dimensions: 384 },
     };
+  }
+}
+
+// Mock provider with embedBatch support
+class BatchMockProvider extends MockProvider {
+  embedBatchCallCount = 0;
+
+  async embedBatch(texts: string[]): Promise<number[][]> {
+    this.embedBatchCallCount++;
+    return texts.map(text => {
+      const vector = Array.from({ length: 384 }).fill(0) as number[];
+      vector[0] = text.length / 100;
+      return vector;
+    });
   }
 }
 
@@ -336,6 +354,100 @@ describe('FoamEmbeddings', () => {
       const results = await embeddings.search('query', 3);
 
       expect(results.length).toBe(3);
+
+      workspace.dispose();
+    });
+  });
+
+  describe('update (batch processing)', () => {
+    it('should use embedBatch when provider supports it', async () => {
+      const datastore = new InMemoryDataStore();
+      const workspace = createTestWorkspace(ROOT, datastore);
+      const provider = new BatchMockProvider();
+      const embeddings = new FoamEmbeddings(workspace, provider);
+
+      for (let i = 0; i < 5; i++) {
+        const noteUri = URI.parse(`/note${i}.md`, 'file');
+        datastore.set(noteUri, `# Note ${i}\n\nContent ${i}`);
+        await workspace.fetchAndSet(noteUri);
+      }
+
+      await embeddings.update();
+
+      expect(embeddings.size()).toBe(5);
+      // Should have used embedBatch, not individual embed calls
+      expect(provider.embedBatchCallCount).toBeGreaterThan(0);
+      expect(provider.embedCallCount).toBe(0);
+
+      workspace.dispose();
+    });
+
+    it('should fall back to sequential embed when provider lacks embedBatch', async () => {
+      const datastore = new InMemoryDataStore();
+      const workspace = createTestWorkspace(ROOT, datastore);
+      const provider = new MockProvider();
+      const embeddings = new FoamEmbeddings(workspace, provider);
+
+      for (let i = 0; i < 3; i++) {
+        const noteUri = URI.parse(`/note${i}.md`, 'file');
+        datastore.set(noteUri, `# Note ${i}\n\nContent ${i}`);
+        await workspace.fetchAndSet(noteUri);
+      }
+
+      await embeddings.update();
+
+      expect(embeddings.size()).toBe(3);
+      expect(provider.embedCallCount).toBe(3);
+
+      workspace.dispose();
+    });
+
+    it('should batch items up to BATCH_SIZE', async () => {
+      const datastore = new InMemoryDataStore();
+      const workspace = createTestWorkspace(ROOT, datastore);
+      const provider = new BatchMockProvider();
+      const embeddings = new FoamEmbeddings(workspace, provider);
+
+      // Create more notes than BATCH_SIZE to verify batching
+      const noteCount = FoamEmbeddings.BATCH_SIZE + 5;
+      for (let i = 0; i < noteCount; i++) {
+        const noteUri = URI.parse(`/note${i}.md`, 'file');
+        datastore.set(noteUri, `# Note ${i}\n\nContent ${i}`);
+        await workspace.fetchAndSet(noteUri);
+      }
+
+      await embeddings.update();
+
+      expect(embeddings.size()).toBe(noteCount);
+      // Should have needed 2 batch calls (BATCH_SIZE + 5 remaining)
+      expect(provider.embedBatchCallCount).toBe(2);
+
+      workspace.dispose();
+    });
+
+    it('should skip cached embeddings and only batch uncached ones', async () => {
+      const datastore = new InMemoryDataStore();
+      const workspace = createTestWorkspace(ROOT, datastore);
+      const provider = new BatchMockProvider();
+      const cache = new InMemoryEmbeddingCache();
+      const embeddings = new FoamEmbeddings(workspace, provider, cache);
+
+      // Create 3 notes
+      for (let i = 0; i < 3; i++) {
+        const noteUri = URI.parse(`/note${i}.md`, 'file');
+        datastore.set(noteUri, `# Note ${i}\n\nContent ${i}`);
+        await workspace.fetchAndSet(noteUri);
+      }
+
+      // First update: all should be generated
+      await embeddings.update();
+      expect(provider.embedBatchCallCount).toBe(1);
+      expect(embeddings.size()).toBe(3);
+
+      // Second update: all should be reused from in-memory
+      provider.embedBatchCallCount = 0;
+      await embeddings.update();
+      expect(provider.embedBatchCallCount).toBe(0);
 
       workspace.dispose();
     });
