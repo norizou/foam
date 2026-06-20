@@ -284,7 +284,7 @@ export class FoamEmbeddings implements IDisposable {
     let reused = 0;
 
     // Phase 1: Read all content, check cache, and collect items needing new embeddings
-    const pending: { index: number; text: string; checksum: string; uri: URI }[] = [];
+    const pending: { text: string; checksum: string; uri: URI; title: string }[] = [];
 
     for (let i = 0; i < resources.length; i++) {
       if (cancellationToken?.isCancellationRequested) {
@@ -295,15 +295,6 @@ export class FoamEmbeddings implements IDisposable {
       }
 
       const resource = resources[i];
-
-      onProgress?.({
-        current: i + 1,
-        total: resources.length,
-        context: {
-          uri: resource.uri,
-          title: resource.title,
-        },
-      });
 
       try {
         const content = await this.workspace.readAsMarkdown(resource.uri);
@@ -330,7 +321,7 @@ export class FoamEmbeddings implements IDisposable {
           }
         }
 
-        pending.push({ index: i, text, checksum: textChecksum, uri: resource.uri });
+        pending.push({ text, checksum: textChecksum, uri: resource.uri, title: resource.title });
       } catch (error) {
         Logger.error(
           `Failed to read content for ${resource.uri.toFsPath()}`,
@@ -342,6 +333,7 @@ export class FoamEmbeddings implements IDisposable {
     // Phase 2: Generate embeddings in batches
     const batchSize = FoamEmbeddings.BATCH_SIZE;
     const supportsEmbedBatch = typeof this.provider.embedBatch === 'function';
+    const alreadyProcessed = skipped + reused;
 
     for (let batchStart = 0; batchStart < pending.length; batchStart += batchSize) {
       if (cancellationToken?.isCancellationRequested) {
@@ -352,6 +344,16 @@ export class FoamEmbeddings implements IDisposable {
       }
 
       const batch = pending.slice(batchStart, batchStart + batchSize);
+
+      // Report progress: show current batch position relative to total notes
+      onProgress?.({
+        current: alreadyProcessed + batchStart + batch.length,
+        total: resources.length,
+        context: {
+          uri: batch[0].uri,
+          title: `Generating ${batchStart + 1}-${batchStart + batch.length}/${pending.length}`,
+        },
+      });
 
       try {
         let vectors: number[][];

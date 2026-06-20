@@ -56,10 +56,13 @@ async function buildEmbeddings(
       cancellable: true,
     },
     async (progress, token) => {
+      let lastReported = 0;
       try {
         await embeddings.update(progressInfo => {
           const title = progressInfo.context?.title || 'Processing...';
-          const increment = (1 / progressInfo.total) * 100;
+          const currentPct = (progressInfo.current / progressInfo.total) * 100;
+          const increment = currentPct - lastReported;
+          lastReported = currentPct;
           progress.report({
             message: `${progressInfo.current}/${progressInfo.total} - ${title}`,
             increment: increment,
