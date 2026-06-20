@@ -4,6 +4,7 @@ import { Logger } from '@foam/core';
 import { URI } from '@foam/core';
 import { toVsCodeUri } from '../utils/vsc-utils';
 import { BUILD_EMBEDDINGS_COMMAND } from './ai/build-embeddings';
+import { SemanticSearchProvider, SearchResultEntry } from './semantic-search-results';
 
 interface RerankResponse {
   model?: string;
@@ -17,7 +18,28 @@ interface RerankResponse {
 export const feature: FoamFeature = async (context: ExtensionContext, foamPromise) => {
   const foam = await foamPromise;
 
+  const provider = new SemanticSearchProvider(foam.workspace);
+  const treeView = window.createTreeView('foam-vscode.semantic-search-results', {
+    treeDataProvider: provider,
+    showCollapseAll: false,
+  });
+
+  provider.onDidChangeTreeData(() => {
+    treeView.title = provider.currentQuery
+      ? `Semantic Search: "${provider.currentQuery}" (${provider.nValues})`
+      : 'Semantic Search';
+    commands.executeCommand('setContext', 'foam.semanticSearch.state', provider.getState());
+  });
+
+  // Set initial context for viewsWelcome messages
+  commands.executeCommand('setContext', 'foam.semanticSearch.state', provider.getState());
+
   context.subscriptions.push(
+    treeView,
+    provider,
+    commands.registerCommand('foam-vscode.semantic-search.clear-results', () => {
+      provider.clearResults();
+    }),
     commands.registerCommand('foam-vscode.semantic-search', async () => {
       const query = await window.showInputBox({
         prompt: 'Enter search query for Semantic Search',
@@ -71,6 +93,7 @@ export const feature: FoamFeature = async (context: ExtensionContext, foamPromis
 
             if (similar.length === 0) {
               window.showInformationMessage('No matches found.');
+              provider.setResults(query, []);
               return;
             }
 
@@ -123,39 +146,40 @@ export const feature: FoamFeature = async (context: ExtensionContext, foamPromis
 
             if (!data.results || data.results.length === 0) {
               window.showInformationMessage('No matches found after reranking.');
+              provider.setResults(query, []);
               return;
             }
 
-            // 4. Display Results
-            const quickPickItems = data.results
+            // 4. Display Results in TreeView
+            const searchResults: SearchResultEntry[] = data.results
               .filter(res => res.index >= 0 && res.index < docs.length)
               .map(res => {
                 const doc = docs[res.index];
-                const title = doc.uri.getBasename();
                 const snippet = doc.content.substring(0, 100).replace(/\n/g, ' ');
                 return {
-                  label: `$(file) ${title}`,
-                  description: `Rerank: ${res.relevance_score.toFixed(3)} | Vector: ${doc.similarity.toFixed(3)}`,
-                  detail: snippet,
                   uri: doc.uri,
+                  relevanceScore: res.relevance_score,
+                  vectorScore: doc.similarity,
+                  snippet,
                 };
               });
 
-            if (quickPickItems.length === 0) {
+            if (searchResults.length === 0) {
               window.showInformationMessage('No matches found after reranking.');
+              provider.setResults(query, []);
               return;
             }
 
-            const selected = await window.showQuickPick(quickPickItems, {
-              placeHolder: `Found ${quickPickItems.length} results — select to open`,
-              matchOnDescription: true,
-              matchOnDetail: true,
-            });
+            provider.setResults(query, searchResults);
 
-            if (selected) {
-              const selectedUri = (selected as { uri: URI }).uri;
-              const doc = await vscodeWorkspace.openTextDocument(toVsCodeUri(selectedUri));
-              await window.showTextDocument(doc);
+            // Focus the tree view (ignore if command not found in test environment)
+            try {
+              await commands.executeCommand('foam-vscode.semantic-search-results.focus');
+            } catch (e) {
+              // Command may not be available in test environment
+              if (!(e instanceof Error) || !e.message.includes('not found')) {
+                throw e;
+              }
             }
           } catch (e) {
             Logger.error('Semantic search failed', e);

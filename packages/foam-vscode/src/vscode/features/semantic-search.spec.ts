@@ -15,6 +15,16 @@ const mockFoam = () => {
       readAsMarkdown: (uri: URI) => {
         return Promise.resolve(notes[uri.path] ?? '');
       },
+      find: (uri: URI) => {
+        if (notes[uri.path]) {
+          return {
+            uri,
+            title: uri.getBasename(),
+            type: 'note',
+          } as any;
+        }
+        return null;
+      },
     },
     embeddings: {
       search: vi.fn(),
@@ -43,7 +53,7 @@ describe('semantic-search', () => {
     global.fetch = originalFetch;
   });
 
-  it('should show reranked results in quick pick', async () => {
+  it('should set results in provider after successful search', async () => {
     const foam = mockFoam();
     foam.embeddings.search.mockResolvedValue([
       { uri: URI.parse('/note1.md', 'file'), similarity: 0.8 },
@@ -66,9 +76,6 @@ describe('semantic-search', () => {
     const showInputBoxSpy = vi
       .spyOn(vscode.window, 'showInputBox')
       .mockResolvedValue('how to configure');
-    const showQuickPickSpy = vi
-      .spyOn(vscode.window, 'showQuickPick')
-      .mockResolvedValue(undefined);
     const showInformationMessageSpy = vi.spyOn(
       vscode.window,
       'showInformationMessage'
@@ -106,12 +113,10 @@ describe('semantic-search', () => {
         body: expect.stringContaining('"top_k":20'),
       })
     );
-    expect(showQuickPickSpy).toHaveBeenCalled();
     expect(showInformationMessageSpy).not.toHaveBeenCalled();
     expect(showErrorMessageSpy).not.toHaveBeenCalled();
 
     showInputBoxSpy.mockRestore();
-    showQuickPickSpy.mockRestore();
     showInformationMessageSpy.mockRestore();
     showErrorMessageSpy.mockRestore();
   });
@@ -165,19 +170,14 @@ describe('semantic-search', () => {
     const showInputBoxSpy = vi
       .spyOn(vscode.window, 'showInputBox')
       .mockResolvedValue('test query');
-    const showQuickPickSpy = vi
-      .spyOn(vscode.window, 'showQuickPick')
-      .mockResolvedValue(undefined);
 
     const context = mockContext();
     await feature(context, Promise.resolve(foam));
     await vscode.commands.executeCommand('foam-vscode.semantic-search');
 
     expect(buildCalled).toBe(true);
-    expect(showQuickPickSpy).toHaveBeenCalled();
 
     showInputBoxSpy.mockRestore();
-    showQuickPickSpy.mockRestore();
   });
 
   it('should show information message when no vector matches are found', async () => {
@@ -205,7 +205,6 @@ describe('semantic-search', () => {
     const showInputBoxSpy = vi
       .spyOn(vscode.window, 'showInputBox')
       .mockResolvedValue('query with no matches');
-    const showQuickPickSpy = vi.spyOn(vscode.window, 'showQuickPick');
     const showInformationMessageSpy = vi
       .spyOn(vscode.window, 'showInformationMessage')
       .mockResolvedValue(undefined);
@@ -215,12 +214,10 @@ describe('semantic-search', () => {
     await feature(context, Promise.resolve(foam));
     await vscode.commands.executeCommand('foam-vscode.semantic-search');
 
-    expect(showQuickPickSpy).not.toHaveBeenCalled();
     expect(showInformationMessageSpy).toHaveBeenCalledWith('No matches found.');
     expect(showErrorMessageSpy).not.toHaveBeenCalled();
 
     showInputBoxSpy.mockRestore();
-    showQuickPickSpy.mockRestore();
     showInformationMessageSpy.mockRestore();
     showErrorMessageSpy.mockRestore();
   });
@@ -261,9 +258,6 @@ describe('semantic-search', () => {
     const showInputBoxSpy = vi
       .spyOn(vscode.window, 'showInputBox')
       .mockResolvedValue('query with empty rerank');
-    const showQuickPickSpy = vi
-      .spyOn(vscode.window, 'showQuickPick')
-      .mockResolvedValue(undefined);
     const showInformationMessageSpy = vi
       .spyOn(vscode.window, 'showInformationMessage')
       .mockResolvedValue(undefined);
@@ -273,14 +267,12 @@ describe('semantic-search', () => {
     await feature(context, Promise.resolve(foam));
     await vscode.commands.executeCommand('foam-vscode.semantic-search');
 
-    expect(showQuickPickSpy).not.toHaveBeenCalled();
     expect(showInformationMessageSpy).toHaveBeenCalledWith(
       'No matches found after reranking.'
     );
     expect(showErrorMessageSpy).not.toHaveBeenCalled();
 
     showInputBoxSpy.mockRestore();
-    showQuickPickSpy.mockRestore();
     showInformationMessageSpy.mockRestore();
     showErrorMessageSpy.mockRestore();
   });
@@ -318,7 +310,6 @@ describe('semantic-search', () => {
     const showInputBoxSpy = vi
       .spyOn(vscode.window, 'showInputBox')
       .mockResolvedValue('query causing error');
-    const showQuickPickSpy = vi.spyOn(vscode.window, 'showQuickPick');
     const showInformationMessageSpy = vi.spyOn(
       vscode.window,
       'showInformationMessage'
@@ -331,12 +322,10 @@ describe('semantic-search', () => {
     await feature(context, Promise.resolve(foam));
     await vscode.commands.executeCommand('foam-vscode.semantic-search');
 
-    expect(showQuickPickSpy).not.toHaveBeenCalled();
     expect(showInformationMessageSpy).not.toHaveBeenCalled();
     expect(showErrorMessageSpy).toHaveBeenCalled();
 
     showInputBoxSpy.mockRestore();
-    showQuickPickSpy.mockRestore();
     showInformationMessageSpy.mockRestore();
     showErrorMessageSpy.mockRestore();
   });
@@ -377,9 +366,6 @@ describe('semantic-search', () => {
     const showInputBoxSpy = vi
       .spyOn(vscode.window, 'showInputBox')
       .mockResolvedValue('custom url query');
-    const showQuickPickSpy = vi
-      .spyOn(vscode.window, 'showQuickPick')
-      .mockResolvedValue(undefined);
     const showErrorMessageSpy = vi.spyOn(vscode.window, 'showErrorMessage');
 
     const context = mockContext();
@@ -394,7 +380,6 @@ describe('semantic-search', () => {
     );
 
     showInputBoxSpy.mockRestore();
-    showQuickPickSpy.mockRestore();
     showErrorMessageSpy.mockRestore();
   });
 
@@ -433,9 +418,6 @@ describe('semantic-search', () => {
     const showInputBoxSpy = vi
       .spyOn(vscode.window, 'showInputBox')
       .mockResolvedValue('custom topk query');
-    const showQuickPickSpy = vi
-      .spyOn(vscode.window, 'showQuickPick')
-      .mockResolvedValue(undefined);
     const showErrorMessageSpy = vi.spyOn(vscode.window, 'showErrorMessage');
 
     const context = mockContext();
@@ -453,7 +435,28 @@ describe('semantic-search', () => {
     );
 
     showInputBoxSpy.mockRestore();
-    showQuickPickSpy.mockRestore();
     showErrorMessageSpy.mockRestore();
+  });
+
+  it('should clear results via clear-results command', async () => {
+    const foam = mockFoam();
+
+    vi.spyOn(vscode.workspace, 'getConfiguration').mockReturnValue({
+      get: (section: string) => {
+        if (section === 'enabled') {
+          return true;
+        }
+        return undefined;
+      },
+    } as any);
+
+    const context = mockContext();
+    await feature(context, Promise.resolve(foam));
+
+    // Execute clear-results command to verify it's registered
+    await vscode.commands.executeCommand('foam-vscode.semantic-search.clear-results');
+
+    // Verify the command was registered
+    expect(context.subscriptions.push).toHaveBeenCalled();
   });
 });

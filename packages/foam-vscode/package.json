@@ -103,6 +103,13 @@
           "name": "Related Notes (AI)",
           "icon": "$(sparkle)",
           "contextualTitle": "Foam-cust"
+        },
+        {
+          "when": "config.foam.experimental.ai.enabled",
+          "id": "foam-vscode.semantic-search-results",
+          "name": "Semantic Search",
+          "icon": "$(search)",
+          "contextualTitle": "Foam-cust"
         }
       ]
     },
@@ -141,6 +148,16 @@
         "view": "foam-vscode.related-notes",
         "contents": "No similar notes found for the current note.",
         "when": "config.foam.experimental.ai.enabled && foam.relatedNotes.state == 'ready'"
+      },
+      {
+        "view": "foam-vscode.semantic-search-results",
+        "contents": "Search your notes with semantic search.\n[Search Notes](command:foam-vscode.semantic-search)",
+        "when": "config.foam.experimental.ai.enabled && foam.semanticSearch.state == 'no-search'"
+      },
+      {
+        "view": "foam-vscode.semantic-search-results",
+        "contents": "No matches found.",
+        "when": "config.foam.experimental.ai.enabled && foam.semanticSearch.state == 'no-results'"
       }
     ],
     "menus": {
@@ -305,6 +322,11 @@
           "group": "navigation@1"
         },
         {
+          "command": "foam-vscode.semantic-search.clear-results",
+          "when": "view == foam-vscode.semantic-search-results",
+          "group": "navigation@1"
+        },
+        {
           "command": "foam-vscode.views.smart-folders.group-by:folder",
           "when": "view == foam-vscode.smart-folders && foam-vscode.views.smart-folders.group-by == 'off'",
           "group": "navigation@2"
@@ -402,6 +424,10 @@
           "when": "false"
         },
         {
+          "command": "foam-vscode.semantic-search.clear-results",
+          "when": "false"
+        },
+        {
           "command": "foam-vscode.views.placeholders.expand-all",
           "when": "false"
         },
@@ -455,6 +481,11 @@
       {
         "command": "foam-vscode.semantic-search",
         "title": "Foam: Semantic Search"
+      },
+      {
+        "command": "foam-vscode.semantic-search.clear-results",
+        "title": "Foam: Clear Semantic Search Results",
+        "icon": "$(clear-all)"
       },
       {
         "command": "foam-vscode.update-wikilink-definitions",
