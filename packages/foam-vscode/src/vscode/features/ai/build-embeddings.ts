@@ -10,6 +10,11 @@ export const BUILD_EMBEDDINGS_COMMAND = {
   title: 'Foam: Analyze Notes with AI',
 };
 
+export const REBUILD_EMBEDDINGS_COMMAND = {
+  command: 'foam-vscode.rebuild-embeddings',
+  title: 'Foam: Rebuild Embeddings Index',
+};
+
 export default async function activate(
   context: vscode.ExtensionContext,
   foamPromise: Promise<Foam>
@@ -26,6 +31,25 @@ export default async function activate(
       async () => {
         return await deduplicator.run(
           () => buildEmbeddings(foam.workspace, foam.embeddings),
+          () => {
+            vscode.window.showInformationMessage(
+              'Note analysis is already in progress - waiting for it to complete'
+            );
+          }
+        );
+      }
+    )
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      REBUILD_EMBEDDINGS_COMMAND.command,
+      async () => {
+        return await deduplicator.run(
+          async () => {
+            await foam.embeddings.clearAll();
+            return buildEmbeddings(foam.workspace, foam.embeddings);
+          },
           () => {
             vscode.window.showInformationMessage(
               'Note analysis is already in progress - waiting for it to complete'

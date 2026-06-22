@@ -322,9 +322,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "foam-vscode.semantic-search.clear-results",
+          "command": "foam-vscode.rebuild-embeddings",
           "when": "view == foam-vscode.semantic-search-results",
           "group": "navigation@1"
+        },
+        {
+          "command": "foam-vscode.rebuild-embeddings",
+          "when": "view == foam-vscode.related-notes",
+          "group": "navigation@2"
+        },
+        {
+          "command": "foam-vscode.semantic-search.clear-results",
+          "when": "view == foam-vscode.semantic-search-results",
+          "group": "navigation@2"
         },
         {
           "command": "foam-vscode.views.smart-folders.group-by:folder",
@@ -549,6 +559,12 @@
       {
         "command": "foam-vscode.build-embeddings",
         "title": "Foam: Build Embeddings Index",
+        "when": "config.foam.experimental.ai.enabled"
+      },
+      {
+        "command": "foam-vscode.rebuild-embeddings",
+        "title": "Foam: Rebuild Embeddings Index",
+        "icon": "$(refresh)",
         "when": "config.foam.experimental.ai.enabled"
       },
       {
@@ -1080,6 +1096,24 @@
           "minimum": 1,
           "maximum": 50,
           "description": "Number of results to return after reranking."
+        },
+        "foam.experimental.ai.chunking.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable chunking for long notes (>16000 chars). When disabled, notes are truncated at 16000 characters."
+        },
+        "foam.experimental.ai.chunking.strategy": {
+          "type": "string",
+          "default": "markdown",
+          "enum": ["markdown", "fixed"],
+          "description": "Chunking strategy: 'markdown' splits by headings, 'fixed' uses fixed-size chunks."
+        },
+        "foam.experimental.ai.chunking.maxSize": {
+          "type": "number",
+          "default": 16000,
+          "minimum": 1000,
+          "maximum": 32000,
+          "description": "Maximum chunk size in characters."
         }
       }
     },

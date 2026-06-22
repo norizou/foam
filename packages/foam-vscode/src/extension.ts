@@ -4,6 +4,7 @@ import { workspace, ExtensionContext, window, commands, TextEditor } from 'vscod
 import { MarkdownResourceProvider, Logger, Config } from '@foam/core';
 import { bootstrap } from './core/model/foam';
 import { fromVsCodeUri } from './vscode/utils/vsc-utils';
+import { ChunkingOptions } from './ai/model/chunking';
 
 import { features } from './vscode/features';
 import { FoamFeatureResult } from './types';
@@ -96,8 +97,19 @@ export async function activate(context: ExtensionContext) {
     const embedModel = aiConfig.get<string>('embedding.model') ?? 'bge-m3';
     const embedBatchSize = aiConfig.get<number>('embedding.batchSize') ?? 128;
     const rerankUrl = aiConfig.get<string>('rerank.url') ?? 'http://localhost:1235/v1/rerank';
+    
+    // Chunking configuration
+    const chunkingEnabled = aiConfig.get<boolean>('chunking.enabled') ?? false;
+    const chunkingStrategy = aiConfig.get<string>('chunking.strategy') ?? 'markdown';
+    const chunkingMaxSize = aiConfig.get<number>('chunking.maxSize') ?? 16000;
+    
+    const chunkingOptions: ChunkingOptions = {
+      enabled: chunkingEnabled,
+      strategy: chunkingStrategy as 'markdown' | 'fixed',
+      maxSize: chunkingMaxSize,
+    };
 
-    Logger.info(`AI config: enabled=${aiEnabled}, embedUrl=${embedUrl}, model=${embedModel}, batchSize=${embedBatchSize}, rerankUrl=${rerankUrl}`);
+    Logger.info(`AI config: enabled=${aiEnabled}, embedUrl=${embedUrl}, model=${embedModel}, batchSize=${embedBatchSize}, rerankUrl=${rerankUrl}, chunking=${chunkingEnabled ? chunkingStrategy : 'disabled'}`);
 
     const embeddingProvider = aiEnabled ? new CustEmbeddingProvider({
       url: embedUrl.replace('/v1/embeddings', ''), // remove the path for base url
@@ -113,7 +125,8 @@ export async function activate(context: ExtensionContext) {
       [markdownProvider, attachmentProvider],
       defaultExtension,
       embeddingProvider,
-      embedBatchSize
+      embedBatchSize,
+      chunkingOptions
     );
 
     // Load the features

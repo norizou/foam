@@ -53,7 +53,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
 
     // normalize text to suitable input (format and size)
     // TODO we should better handle long texts by chunking them and averaging embeddings
-    const inputs = texts.map(t => t.substring(0, 6000).normalize());
+    const inputs = texts.map(t => t.substring(0, 16000).normalize());
 
     try {
       const controller = new AbortController();

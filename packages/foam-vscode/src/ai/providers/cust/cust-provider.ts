@@ -33,7 +33,7 @@ export class CustEmbeddingProvider implements EmbeddingProvider {
       return [];
     }
 
-    const inputs = texts.map(t => t.substring(0, 8000).normalize());
+    const inputs = texts.map(t => t.substring(0, 16000).normalize());
 
     try {
       const controller = new AbortController();

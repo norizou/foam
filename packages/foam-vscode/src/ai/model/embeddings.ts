@@ -11,6 +11,13 @@ import {
 } from '@foam/core';
 import { FoamWorkspace } from '@foam/core';
 import { URI } from '@foam/core';
+import {
+  ChunkingStrategy,
+  ChunkingOptions,
+  DEFAULT_CHUNKING_OPTIONS,
+  getChunkingStrategy,
+  Chunk,
+} from './chunking';
 
 /**
  * Represents a similar resource with its similarity score
@@ -18,7 +25,36 @@ import { URI } from '@foam/core';
 export interface SimilarResource {
   uri: URI;
   similarity: number;
+  chunkId?: string; // Optional chunk identifier for chunked results
 }
+
+/**
+ * Extended embedding with chunking support
+ */
+export interface ChunkedEmbedding {
+  chunks: {
+    id: string;
+    vector: number[];
+    text: string;
+    start: number;
+    end: number;
+    headingPath: string[];
+  }[];
+  aggregatedVector?: number[]; // Optional aggregated vector for quick comparison
+}
+
+/**
+ * Regular embedding (backward compatible)
+ */
+export interface RegularEmbedding {
+  vector: number[];
+  createdAt: number;
+}
+
+/**
+ * Union type for embeddings
+ */
+export type EmbeddingData = RegularEmbedding | ChunkedEmbedding;
 
 /**
  * Context information for embedding progress
@@ -37,7 +73,7 @@ export class FoamEmbeddings implements IDisposable {
   /**
    * Maps resource URIs to their embeddings
    */
-  private embeddings: Map<string, Embedding> = new Map();
+  private embeddings: Map<string, EmbeddingData> = new Map();
 
   private onDidUpdateEmitter = new Emitter<void>();
   onDidUpdate = this.onDidUpdateEmitter.event;
@@ -51,8 +87,13 @@ export class FoamEmbeddings implements IDisposable {
     private readonly workspace: FoamWorkspace,
     private readonly provider: EmbeddingProvider,
     private readonly cache?: EmbeddingCache,
-    private readonly batchSize: number = FoamEmbeddings.DEFAULT_BATCH_SIZE
-  ) {}
+    private readonly batchSize: number = FoamEmbeddings.DEFAULT_BATCH_SIZE,
+    private readonly chunkingOptions: ChunkingOptions = DEFAULT_CHUNKING_OPTIONS
+  ) {
+    this.chunkingStrategy = getChunkingStrategy(chunkingOptions);
+  }
+
+  private chunkingStrategy: ChunkingStrategy;
 
   /**
    * Get the embedding for a resource
@@ -61,7 +102,21 @@ export class FoamEmbeddings implements IDisposable {
    */
   public getEmbedding(uri: URI): number[] | null {
     const embedding = this.embeddings.get(uri.path);
-    return embedding ? embedding.vector : null;
+    if (!embedding) {
+      return null;
+    }
+    
+    // Handle both regular and chunked embeddings
+    if ('vector' in embedding) {
+      return embedding.vector;
+    } else if ('aggregatedVector' in embedding && embedding.aggregatedVector) {
+      return embedding.aggregatedVector;
+    } else if ('chunks' in embedding && embedding.chunks.length > 0) {
+      // Return first chunk as fallback
+      return embedding.chunks[0].vector;
+    }
+    
+    return null;
   }
 
   /**
@@ -109,10 +164,23 @@ export class FoamEmbeddings implements IDisposable {
         continue;
       }
 
-      const similarity = this.cosineSimilarity(
-        targetEmbedding,
-        embedding.vector
-      );
+      let similarity: number;
+      
+      // Handle both regular and chunked embeddings
+      if ('vector' in embedding) {
+        similarity = this.cosineSimilarity(targetEmbedding, embedding.vector);
+      } else if ('aggregatedVector' in embedding && embedding.aggregatedVector) {
+        similarity = this.cosineSimilarity(targetEmbedding, embedding.aggregatedVector);
+      } else if ('chunks' in embedding && embedding.chunks.length > 0) {
+        // Use best chunk similarity
+        const chunkSimilarities = embedding.chunks.map(chunk =>
+          this.cosineSimilarity(targetEmbedding, chunk.vector)
+        );
+        similarity = Math.max(...chunkSimilarities);
+      } else {
+        continue;
+      }
+
       similarities.push({
         uri: URI.file(path),
         similarity,
@@ -136,25 +204,60 @@ export class FoamEmbeddings implements IDisposable {
       Logger.debug('Query embedding is empty (AI provider may be disabled or unavailable)');
       return [];
     }
-    const similarities: SimilarResource[] = [];
+    
+    // Group similarities by URI for chunked embeddings
+    const uriSimilarities: Map<string, {similarity: number, chunkId?: string}[]> = new Map();
 
     for (const [path, embedding] of this.embeddings.entries()) {
-      if (embedding.vector.length !== targetEmbedding.length) {
-        Logger.debug(`Skipping ${path}: dimension mismatch (${embedding.vector.length} vs ${targetEmbedding.length})`);
+      let similarities: {similarity: number, chunkId?: string}[] = [];
+      
+      // Handle both regular and chunked embeddings
+      if ('vector' in embedding) {
+        if (embedding.vector.length !== targetEmbedding.length) {
+          Logger.debug(`Skipping ${path}: dimension mismatch (${embedding.vector.length} vs ${targetEmbedding.length})`);
+          continue;
+        }
+        const similarity = this.cosineSimilarity(targetEmbedding, embedding.vector);
+        similarities.push({ similarity });
+      } else if ('aggregatedVector' in embedding && embedding.aggregatedVector) {
+        if (embedding.aggregatedVector.length !== targetEmbedding.length) {
+          Logger.debug(`Skipping ${path}: dimension mismatch (${embedding.aggregatedVector.length} vs ${targetEmbedding.length})`);
+          continue;
+        }
+        const similarity = this.cosineSimilarity(targetEmbedding, embedding.aggregatedVector);
+        similarities.push({ similarity });
+      } else if ('chunks' in embedding && embedding.chunks.length > 0) {
+        // Calculate similarity for each chunk
+        for (const chunk of embedding.chunks) {
+          if (chunk.vector.length !== targetEmbedding.length) {
+            Logger.debug(`Skipping ${path} chunk ${chunk.id}: dimension mismatch (${chunk.vector.length} vs ${targetEmbedding.length})`);
+            continue;
+          }
+          const similarity = this.cosineSimilarity(targetEmbedding, chunk.vector);
+          similarities.push({ similarity, chunkId: chunk.id });
+        }
+      } else {
         continue;
       }
-      const similarity = this.cosineSimilarity(
-        targetEmbedding,
-        embedding.vector
-      );
-      similarities.push({
+      
+      if (similarities.length > 0) {
+        uriSimilarities.set(path, similarities);
+      }
+    }
+    
+    // For each URI, use the best chunk similarity
+    const results: SimilarResource[] = [];
+    for (const [path, similarities] of uriSimilarities.entries()) {
+      const best = similarities.sort((a, b) => b.similarity - a.similarity)[0];
+      results.push({
         uri: URI.file(path),
-        similarity,
+        similarity: best.similarity,
+        chunkId: best.chunkId,
       });
     }
 
-    similarities.sort((a, b) => b.similarity - a.similarity);
-    return similarities.slice(0, topK);
+    results.sort((a, b) => b.similarity - a.similarity);
+    return results.slice(0, topK);
   }
 
   /**
@@ -191,7 +294,7 @@ export class FoamEmbeddings implements IDisposable {
    * @param uri The URI of the resource to update
    * @returns The embedding vector, or null if not found/not processed
    */
-  public async updateResource(uri: URI): Promise<Embedding | null> {
+  public async updateResource(uri: URI): Promise<EmbeddingData | null> {
     const resource = this.workspace.find(uri);
     if (!resource) {
       // Resource deleted, remove embedding
@@ -220,8 +323,8 @@ export class FoamEmbeddings implements IDisposable {
           Logger.debug(
             `Skipping embedding for ${uri.toFsPath()} - content unchanged`
           );
-          // Use cached embedding
-          const embedding: Embedding = {
+          // Use cached embedding - for backward compatibility, assume regular embedding
+          const embedding: RegularEmbedding = {
             vector: cached.embedding,
             createdAt: Date.now(),
           };
@@ -230,29 +333,126 @@ export class FoamEmbeddings implements IDisposable {
         }
       }
 
-      // Generate new embedding
-      const vector = await this.provider.embed(text);
-
-      const embedding: Embedding = {
-        vector,
-        createdAt: Date.now(),
-      };
-      this.embeddings.set(uri.path, embedding);
-
-      // Update cache
-      if (this.cache) {
-        this.cache.set(uri, {
-          checksum: textChecksum,
-          embedding: vector,
-        });
+      // Apply chunking if enabled and text is long enough
+      if (this.chunkingOptions.enabled && text.length > this.chunkingOptions.maxSize) {
+        return await this.updateResourceWithChunking(uri, text, textChecksum);
+      } else {
+        return await this.updateResourceRegular(uri, text, textChecksum);
       }
-
-      this.onDidUpdateEmitter.fire();
-      return embedding;
     } catch (error) {
       Logger.error(`Failed to update embedding for ${uri.toFsPath()}`, error);
       return null;
     }
+  }
+
+  /**
+   * Update resource with regular (non-chunked) embedding
+   */
+  private async updateResourceRegular(
+    uri: URI,
+    text: string,
+    textChecksum: string
+  ): Promise<RegularEmbedding> {
+    // Generate new embedding
+    const vector = await this.provider.embed(text);
+
+    const embedding: RegularEmbedding = {
+      vector,
+      createdAt: Date.now(),
+    };
+    this.embeddings.set(uri.path, embedding);
+
+    // Update cache
+    if (this.cache) {
+      this.cache.set(uri, {
+        checksum: textChecksum,
+        embedding: vector,
+      });
+    }
+
+    this.onDidUpdateEmitter.fire();
+    return embedding;
+  }
+
+  /**
+   * Update resource with chunked embedding
+   */
+  private async updateResourceWithChunking(
+    uri: URI,
+    text: string,
+    textChecksum: string
+  ): Promise<ChunkedEmbedding> {
+    // Chunk the text
+    const chunks = this.chunkingStrategy.chunk(text, this.chunkingOptions);
+    
+    // Generate embeddings for each chunk
+    const chunkEmbeddings: ChunkedEmbedding['chunks'] = [];
+    const chunkTexts = chunks.map(chunk => {
+      // Add heading path as context prefix
+      const context = chunk.headingPath.length > 0 
+        ? chunk.headingPath.join(' > ') + '\n\n'
+        : '';
+      return context + chunk.text;
+    });
+
+    // Batch embed all chunks
+    const vectors = await this.provider.embedBatch(chunkTexts);
+
+    for (let i = 0; i < chunks.length; i++) {
+      chunkEmbeddings.push({
+        id: chunks[i].id,
+        vector: vectors[i],
+        text: chunks[i].text,
+        start: chunks[i].start,
+        end: chunks[i].end,
+        headingPath: chunks[i].headingPath,
+      });
+    }
+
+    // Calculate aggregated vector (average of all chunks)
+    const aggregatedVector = this.calculateAggregatedVector(vectors);
+
+    const embedding: ChunkedEmbedding = {
+      chunks: chunkEmbeddings,
+      aggregatedVector,
+    };
+    this.embeddings.set(uri.path, embedding);
+
+    // Update cache - store aggregated vector for backward compatibility
+    if (this.cache) {
+      this.cache.set(uri, {
+        checksum: textChecksum,
+        embedding: aggregatedVector,
+      });
+    }
+
+    this.onDidUpdateEmitter.fire();
+    return embedding;
+  }
+
+  /**
+   * Calculate aggregated vector from multiple vectors (average)
+   */
+  private calculateAggregatedVector(vectors: number[][]): number[] {
+    if (vectors.length === 0) {
+      return [];
+    }
+    
+    const dimensions = vectors[0].length;
+    const aggregated: number[] = new Array(dimensions).fill(0);
+    
+    for (const vector of vectors) {
+      for (let i = 0; i < dimensions; i++) {
+        aggregated[i] += vector[i];
+      }
+    }
+    
+    // Average
+    for (let i = 0; i < dimensions; i++) {
+      aggregated[i] /= vectors.length;
+    }
+    
+    return aggregated;
   }
 
   /** Default batch size for embedding API calls */
@@ -261,6 +461,7 @@ export class FoamEmbeddings implements IDisposable {
   /**
    * Update embeddings for all notes, processing only missing or stale ones.
    * Uses batch API calls when the provider supports embedBatch().
+   * Long notes that exceed the chunking threshold are processed individually.
    * @param onProgress Optional callback to report progress
    * @param cancellationToken Optional token to cancel the operation
    * @returns Promise that resolves when all embeddings are updated
@@ -283,9 +484,11 @@ export class FoamEmbeddings implements IDisposable {
     let skipped = 0;
     let generated = 0;
     let reused = 0;
+    let chunked = 0;
 
     // Phase 1: Read all content, check cache, and collect items needing new embeddings
     const pending: { text: string; checksum: string; uri: URI; title: string }[] = [];
+    const pendingChunked: { text: string; checksum: string; uri: URI; title: string }[] = [];
 
     for (let i = 0; i < resources.length; i++) {
       if (cancellationToken?.isCancellationRequested) {
@@ -322,7 +525,12 @@ export class FoamEmbeddings implements IDisposable {
           }
         }
 
-        pending.push({ text, checksum: textChecksum, uri: resource.uri, title: resource.title });
+        // Separate long notes for chunking vs regular batch processing
+        if (this.chunkingOptions.enabled && text.length > this.chunkingOptions.maxSize) {
+          pendingChunked.push({ text, checksum: textChecksum, uri: resource.uri, title: resource.title });
+        } else {
+          pending.push({ text, checksum: textChecksum, uri: resource.uri, title: resource.title });
+        }
       } catch (error) {
         Logger.error(
           `Failed to read content for ${resource.uri.toFsPath()}`,
@@ -331,7 +539,7 @@ export class FoamEmbeddings implements IDisposable {
       }
     }
 
-    // Phase 2: Generate embeddings in batches
+    // Phase 2: Generate embeddings in batches for regular notes
     const supportsEmbedBatch = typeof this.provider.embedBatch === 'function';
     const alreadyProcessed = skipped + reused;
 
@@ -393,6 +601,39 @@ export class FoamEmbeddings implements IDisposable {
       }
     }
 
+    // Phase 3: Process chunked notes individually
+    for (let i = 0; i < pendingChunked.length; i++) {
+      if (cancellationToken?.isCancellationRequested) {
+        Logger.info(
+          `Embedding build cancelled during chunked processing. Chunked ${chunked}/${pendingChunked.length}.`
+        );
+        throw new CancellationError('Embedding build cancelled');
+      }
+
+      const item = pendingChunked[i];
+
+      // Report progress
+      onProgress?.({
+        current: alreadyProcessed + pending.length + i + 1,
+        total: resources.length,
+        context: {
+          uri: item.uri,
+          title: `Chunking ${item.title}`,
+        },
+      });
+
+      try {
+        await this.updateResourceWithChunking(item.uri, item.text, item.checksum);
+        chunked++;
+        generated++;
+      } catch (error) {
+        Logger.error(
+          `Failed to generate chunked embedding for ${item.uri.toFsPath()}`,
+          error
+        );
+      }
+    }
+
     // Flush cache to disk once after all batches complete
     if (this.cache?.flush && generated > 0) {
       await this.cache.flush();
@@ -400,7 +641,7 @@ export class FoamEmbeddings implements IDisposable {
 
     const end = Date.now();
     Logger.info(
-      `Embeddings update complete: ${generated} generated, ${skipped} from cache, ${reused} already current (${
+      `Embeddings update complete: ${generated} generated (${chunked} chunked), ${skipped} from cache, ${reused} already current (${
         this.embeddings.size
       }/${resources.length} total) in ${end - start}ms`
     );
@@ -433,6 +674,8 @@ export class FoamEmbeddings implements IDisposable {
    * @param provider The embedding provider to use
    * @param keepMonitoring Whether to automatically update embeddings when workspace changes
    * @param cache Optional cache for storing embeddings
+   * @param batchSize Optional batch size for embedding API calls
+   * @param chunkingOptions Optional chunking configuration
    * @returns The FoamEmbeddings instance
    */
   public static fromWorkspace(
@@ -440,9 +683,16 @@ export class FoamEmbeddings implements IDisposable {
     provider: EmbeddingProvider,
     keepMonitoring: boolean = false,
     cache?: EmbeddingCache,
-    batchSize?: number
+    batchSize?: number,
+    chunkingOptions?: ChunkingOptions
   ): FoamEmbeddings {
-    const embeddings = new FoamEmbeddings(workspace, provider, cache, batchSize);
+    const embeddings = new FoamEmbeddings(
+      workspace,
+      provider,
+      cache,
+      batchSize,
+      chunkingOptions ?? DEFAULT_CHUNKING_OPTIONS
+    );
 
     if (keepMonitoring) {
       // Update embeddings when resources change
@@ -461,6 +711,21 @@ export class FoamEmbeddings implements IDisposable {
     }
 
     return embeddings;
+  }
+
+  /**
+   * Clear all embeddings from memory and the cache.
+   * After calling this, call update() to regenerate from scratch.
+   */
+  public async clearAll(): Promise<void> {
+    this.embeddings.clear();
+    if (this.cache) {
+      this.cache.clear();
+      if (this.cache.flush) {
+        await this.cache.flush();
+      }
+    }
+    this.onDidUpdateEmitter.fire();
   }
 
   public dispose(): void {

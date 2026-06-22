@@ -13,6 +13,7 @@ import { FoamEmbeddings } from '../../ai/model/embeddings';
 import { FileEmbeddingCache } from '../../ai/model/file-embedding-cache';
 import { EmbeddingProvider } from '../../ai/services/embedding-provider';
 import { NoOpEmbeddingProvider } from '../../ai/services/noop-embedding-provider';
+import { ChunkingOptions, DEFAULT_CHUNKING_OPTIONS } from '../../ai/model/chunking';
 
 export type { Services } from '@foam/core';
 
@@ -29,7 +30,8 @@ export const bootstrap = async (
   initialProviders: ResourceProvider[],
   defaultExtension: string = '.md',
   embeddingProvider?: EmbeddingProvider,
-  embeddingBatchSize?: number
+  embeddingBatchSize?: number,
+  chunkingOptions?: ChunkingOptions
 ): Promise<Foam> => {
   const core = await coreBootstrap(
     roots,
@@ -54,7 +56,8 @@ export const bootstrap = async (
     embeddingProvider,
     true,
     cache,
-    embeddingBatchSize
+    embeddingBatchSize,
+    chunkingOptions ?? DEFAULT_CHUNKING_OPTIONS
   );
 
   if (await embeddingProvider.isAvailable()) {

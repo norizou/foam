@@ -102,12 +102,12 @@ describe('CustEmbeddingProvider', () => {
       });
 
       const provider = new CustEmbeddingProvider();
-      const longText = 'a'.repeat(10000);
+      const longText = 'a'.repeat(20000);
       await provider.embed(longText);
 
       const callArgs = (global.fetch as any).mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      expect(body.input[0].length).toBe(8000);
+      expect(body.input[0].length).toBe(16000);
     });
 
     it('should throw error on non-ok response', async () => {

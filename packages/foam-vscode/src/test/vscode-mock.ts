@@ -1657,7 +1657,10 @@ class TestFoam {
       dataStore,
       parser,
       providers,
-      '.md'
+      '.md',
+      undefined, // embeddingProvider
+      undefined, // embeddingBatchSize
+      undefined  // chunkingOptions
     );
 
     Logger.info('Mock Foam instance created with file watcher');
